@@ -10,6 +10,7 @@ from selectolax.parser import HTMLParser, Node
 
 from app.modules.indexer_definitions.base_indexer_definition import (
     BaseIndexerDefinition,
+    IndexerClient,
 )
 from app.modules.indexer_definitions.enums import AuthenticationErrorEnum
 from app.modules.indexer_definitions.schemas.internal import (
@@ -107,6 +108,25 @@ def _parse_seeders(item: Node) -> int:
 
 
 class HunTorrentIndexerDefinition(BaseIndexerDefinition):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        # A HunTorrent reCAPTCHA-számlálója IP alapú. Ha a szerver IPv6-on megy
+        # ki, a kézi (böngészős, jellemzően IPv4-es) belépés nem az app
+        # forgalmára oldja fel a captchát, így az automata login végleg elakad.
+        # Ezért a klienst IPv4-re kötjük (local_address="0.0.0.0"), hogy az app
+        # ugyanarról az IPv4 címről menjen, mint a böngésző.
+        base_client = self._client
+        self._client = IndexerClient(
+            definition=self,
+            base_url=self.url,
+            follow_redirects=True,
+            headers=base_client.headers,
+            timeout=base_client.timeout,
+            transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"),
+        )
+        self._client.cookies.update(base_client.cookies)
+
     @property
     def id(self) -> str:
         return "huntorrent"
@@ -222,6 +242,17 @@ class HunTorrentIndexerDefinition(BaseIndexerDefinition):
         # és poszter-rács (div.poster-item) elrendezés is. Mindkettőt kezeljük,
         # így a keresés akkor is működik, ha a fiók bármelyik nézeten van.
         torrents = self._parse_table_rows(tree) or self._parse_poster_items(tree)
+
+        # Ha a lapon vannak torrentek, de egyik parser sem illeszkedett, akkor
+        # az oldal markupja megváltozott. Enélkül a keresés némán nulla
+        # találatot adna: se hiba, se log, csak "nincs találat" — ezt nagyon
+        # nehéz kideríteni.
+        if not torrents and "/download/" in response.text:
+            self.logger.warning(
+                "%s: a böngésző oldal torrenteket tartalmaz, de egyik parser "
+                "sem illeszkedett – valószínűleg megváltozott a markup.",
+                self.name,
+            )
 
         return IndexerDefinitionFindTorrentsResult(
             torrents=torrents,
