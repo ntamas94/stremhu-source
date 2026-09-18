@@ -3,8 +3,19 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from app.modules.indexer_definitions.models import IndexerDefinitionModel
 from app.modules.indexer_definitions.schemas.api import IndexerDefinitionResponse
 from app.modules.torrents.schemas.internal import TorrentWithRelay
+
+
+class TorrentAlternateResponse(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
+
+    indexer_definition: IndexerDefinitionResponse
+    torrent_id: str
 
 
 class TorrentResponse(BaseModel):
@@ -14,6 +25,7 @@ class TorrentResponse(BaseModel):
     )
 
     info_hash: str
+    alternates: list[TorrentAlternateResponse] = []
     indexer_definition: IndexerDefinitionResponse
     torrent_id: str
     name: str
@@ -31,9 +43,21 @@ class TorrentResponse(BaseModel):
     def from_torrent_with_relay(
         cls,
         torrent_with_relay: TorrentWithRelay,
+        indexer_definitions: dict[str, IndexerDefinitionModel] | None = None,
     ) -> "TorrentResponse":
+        definitions = indexer_definitions or {}
         return cls(
             info_hash=torrent_with_relay.info_hash,
+            alternates=[
+                TorrentAlternateResponse(
+                    indexer_definition=IndexerDefinitionResponse.model_validate(
+                        definitions[alternate["indexer_id"]]
+                    ),
+                    torrent_id=alternate["torrent_id"],
+                )
+                for alternate in torrent_with_relay.torrent.alternates or []
+                if alternate["indexer_id"] in definitions
+            ],
             indexer_definition=IndexerDefinitionResponse.model_validate(
                 torrent_with_relay.torrent.indexer_account.indexer_definition
             ),

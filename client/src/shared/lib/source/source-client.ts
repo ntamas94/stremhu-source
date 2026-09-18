@@ -502,8 +502,14 @@ export interface SystemStatusResponse {
   isReverseProxy: boolean
 }
 
+export interface TorrentAlternateResponse {
+  indexerDefinition: IndexerDefinitionResponse
+  torrentId: string
+}
+
 export interface TorrentResponse {
   infoHash: string
+  alternates?: TorrentAlternateResponse[]
   indexerDefinition: IndexerDefinitionResponse
   torrentId: string
   name: string

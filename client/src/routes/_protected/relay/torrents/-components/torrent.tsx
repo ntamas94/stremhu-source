@@ -249,6 +249,32 @@ export function Torrent(props: TorrentProps) {
             <PinIcon />
           </Badge>
         )}
+        {torrent.alternates?.map((alternate) => (
+          <Badge
+            key={`${alternate.indexerDefinition.id}:${alternate.torrentId}`}
+            asChild
+            variant="outline"
+            title={`Tartalék forrás: ${alternate.indexerDefinition.name} #${alternate.torrentId}`}
+          >
+            <a
+              href={
+                new URL(
+                  alternate.indexerDefinition.detailsPath.replace(
+                    '{torrent_id}',
+                    alternate.torrentId,
+                  ),
+                  alternate.indexerDefinition.url,
+                ).href
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLinkIcon />
+              {alternate.indexerDefinition.name} #{alternate.torrentId}
+            </a>
+          </Badge>
+        ))}
       </div>
     </div>
   )

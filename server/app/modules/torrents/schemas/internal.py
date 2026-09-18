@@ -24,3 +24,4 @@ class TorrentUpdate(BaseModel):
     is_persisted: bool | None = None
     full_download: bool | None = None
     resume_bytes: bytes | None = None
+    alternates: list[dict[str, str]] | None = None
