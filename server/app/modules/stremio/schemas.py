@@ -186,7 +186,14 @@ class StremioStream(BaseModel):
         ]
         indexer = f"🧲 {' + '.join(indexer_names)}"
 
-        description_first_line = " | ".join(compact([indexer, seeders, file_size]))
+        if torrent_stream.merged_indexer_names:
+            # Több indexernél a nevek külön sort kapnak, különben a kliens
+            # tetszőleges helyen töri meg a hosszú sort.
+            description_first_line = "\n".join(
+                [indexer, " | ".join(compact([seeders, file_size]))]
+            )
+        else:
+            description_first_line = " | ".join(compact([indexer, seeders, file_size]))
 
         media_attributes = [
             attribute
