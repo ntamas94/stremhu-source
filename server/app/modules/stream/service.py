@@ -18,6 +18,7 @@ from app.modules.playback_histories.schemas.internal import (
 )
 from app.modules.relay.entities import File
 from app.modules.relay.service import RelayService
+from app.modules.settings.service import SettingsService
 from app.modules.stream.schemas import (
     ParsedRangeHeader,
     StreamAlternate,
@@ -48,12 +49,14 @@ class StreamService:
         torrent_files_service: TorrentFilesService,
         indexers_service: IndexersService,
         relay_service: RelayService,
+        settings_service: SettingsService,
         isolated_torrent_files_service: IsolatedTorrentFilesService,
     ):
         self._torrents_service = torrents_service
         self._torrent_files_service = torrent_files_service
         self._indexers_service = indexers_service
         self._relay_service = relay_service
+        self._settings_service = settings_service
         self._isolated_torrent_files_service = isolated_torrent_files_service
 
     async def prepare_for_stream(
@@ -108,7 +111,7 @@ class StreamService:
                 file_index=source.file_index,
             )
 
-            if created or config.dual_swarm:
+            if created or await asyncio.to_thread(self._is_dual_swarm):
                 await self._merge_same_hash_sources(
                     torrent_with_relay.info_hash, sources[index + 1 :]
                 )
@@ -187,6 +190,12 @@ class StreamService:
             )
             return torrent_with_relay, True
 
+    def _is_dual_swarm(self) -> bool:
+        system_settings = self._settings_service.find_system()
+        if system_settings is None:
+            return config.dual_swarm
+        return system_settings.dual_swarm
+
     async def _merge_same_hash_sources(
         self, info_hash: str, sources: list[StreamAlternate]
     ) -> None:
@@ -198,6 +207,8 @@ class StreamService:
         Csak a már cache-elt torrent fájlokat nézi, indexert nem hív, és a
         lejátszást sosem töri meg.
         """
+        dual_swarm_enabled = await asyncio.to_thread(self._is_dual_swarm)
+
         for source in sources:
             try:
                 torrent_file = await asyncio.to_thread(
@@ -209,7 +220,7 @@ class StreamService:
                     continue
 
                 same_hash = torrent_file.info.info_hash == info_hash
-                dual_swarm = config.dual_swarm and self._relay_service.is_linkable(
+                dual_swarm = dual_swarm_enabled and self._relay_service.is_linkable(
                     info_hash, torrent_file.info
                 )
                 if not same_hash and not dual_swarm:
