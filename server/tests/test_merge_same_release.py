@@ -101,4 +101,5 @@ def test_merged_label_breaks_line_after_indexers():
     single_lines = StremioStream.from_imdb_torrent_stream(merged[1]).description.split(
         "\n"
     )
-    assert single_lines[0].startswith("🧲 nCore | 👥 3 | 💾 ")
+    assert single_lines[0] == "🧲 nCore"
+    assert single_lines[1].startswith("👥 3 | 💾 ")
