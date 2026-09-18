@@ -75,6 +75,7 @@ async def stream(
             indexer_id=stream_token.indexer_id,
             torrent_id=stream_token.torrent_id,
             file_index=stream_token.file_index,
+            alternates=stream_token.alternates,
         )
 
         imdb_info: ImdbInfo | None = None
