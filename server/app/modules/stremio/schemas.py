@@ -180,7 +180,11 @@ class StremioStream(BaseModel):
     ) -> StremioStream:
         file_size = f"💾 {humanize.naturalsize(torrent_stream.file_size, binary=True, format='%.2f')}"
         seeders = f"👥 {torrent_stream.seeders}"
-        indexer = f"🧲 {torrent_stream.indexer_account.indexer_definition.name}"
+        indexer_names = [
+            torrent_stream.indexer_account.indexer_definition.name,
+            *torrent_stream.merged_indexer_names,
+        ]
+        indexer = f"🧲 {' + '.join(indexer_names)}"
 
         description_first_line = " | ".join(compact([indexer, seeders, file_size]))
 
