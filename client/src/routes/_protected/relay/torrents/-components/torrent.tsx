@@ -138,7 +138,7 @@ export function Torrent(props: TorrentProps) {
     }
 
   return (
-    <div className="grid gap-2 border border-transparent rounded-md bg-muted/50 p-4">
+    <div className="grid gap-2">
       <Item className="p-0">
         <ItemContent>
           <ItemTitle className="line-clamp-2 break-all">
