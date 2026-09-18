@@ -200,6 +200,16 @@ class RelayService:
         except Exception:
             raise HTTPException(400, "A torrent nem érvényes.")
 
+        # Azonos info_hash másik indexerről: nem új handle, csak a trackerei
+        # kerülnek a már futó torrenthez (így a prioritások sem állnak vissza).
+        existing = self._torrents.get(torrent_info.info_hash())
+        if existing is not None:
+            for tracker in torrent_info.trackers():
+                existing.torrent_handle.add_tracker(
+                    {"url": tracker.url, "tier": tracker.tier}
+                )
+            return RelayTorrent.from_libtorrent_handle(existing.torrent_handle)
+
         params: libtorrent.add_torrent_params | None = None
         if resume_bytes:
             params = libtorrent.read_resume_data(resume_bytes)
