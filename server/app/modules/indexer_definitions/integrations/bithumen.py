@@ -6,10 +6,12 @@ from selectolax.parser import HTMLParser
 from app.modules.indexer_definitions.base_indexer_definition import (
     BaseIndexerDefinition,
 )
-from app.modules.indexer_definitions.enums import AuthenticationErrorEnum
 from app.modules.indexer_definitions.schemas.internal import (
+    AuthCredentialError,
+    AuthError,
+    AuthSessionError,
     IndexerDefinitionFindTorrentsResult,
-    IndexerDefinitionLogin,
+    IndexerDefinitionLoginPayload,
     IndexerDefinitionTorrent,
 )
 from app.modules.media_attributes.constants import MediaAttributeKey
@@ -55,27 +57,25 @@ class BithumenIndexerDefinition(BaseIndexerDefinition):
     def details_path(self) -> str:
         return "/details.php?id={torrent_id}"
 
-    def _detect_authentication_error(
-        self, response: httpx.Response
-    ) -> AuthenticationErrorEnum | None:
+    def _detect_authentication_error(self, response: httpx.Response) -> AuthError:
         if response.status_code == 401:
-            return AuthenticationErrorEnum.CREDENTIAL_ERROR
+            return AuthCredentialError()
 
         final_path = str(response.url.path)
         if "/login.php" in final_path:
-            return AuthenticationErrorEnum.SESSION_ERROR
+            return AuthSessionError()
 
         return None
 
     async def _login(
         self,
-        credential: IndexerDefinitionLogin,
+        payload: IndexerDefinitionLoginPayload,
     ) -> httpx.Response:
         return await self._client.post(
             self.login_path,
             data={
-                "username": credential.username,
-                "password": credential.password,
+                "username": payload.username,
+                "password": payload.password,
                 "returnto": "/",
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},

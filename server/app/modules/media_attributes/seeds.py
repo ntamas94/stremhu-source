@@ -181,7 +181,7 @@ DEFAULT_ATTRIBUTES = [
         id=MediaAttributeKey.CAM,
         name="Cam",
         preference_id=PreferenceKey.SOURCE,
-        pattern=r"\b(cam|ts|telesync|scr|dvdscr)\b",
+        pattern=r"\b(cam|hdcam|ts|telesync|scr|dvdscr|md|mdhun|mdub)\b",
         short_name=None,
     ),
     # Edition
@@ -296,6 +296,15 @@ DEFAULT_ATTRIBUTES = [
         is_preferable=False,
         show_in_details=True,
     ),
+    MediaAttributeModel(
+        id=MediaAttributeKey.THREE_D,
+        name="3D",
+        preference_id=PreferenceKey.EDITION,
+        pattern=r"\b(3d|hsbs|hou|half[-_. ]?(?:sbs|ou))\b",
+        short_name="3D",
+        is_preferable=False,
+        show_in_details=True,
+    ),
     # Audio Qualities
     MediaAttributeModel(
         id=MediaAttributeKey.TRUEHD,
@@ -382,13 +391,5 @@ DEFAULT_ATTRIBUTES = [
         preference_id=PreferenceKey.AUDIO_CHANNELS,
         pattern=r"(2\.0|2ch|stereo)",
         short_name="2.0",
-    ),
-    # Others
-    MediaAttributeModel(
-        id=MediaAttributeKey.THREE_D,
-        name="3D",
-        preference_id=None,
-        pattern=r"\b(3d|hsbs|hou|half[-_. ]?(?:sbs|ou))\b",
-        short_name="3D",
     ),
 ]

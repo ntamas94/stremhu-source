@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 import content_types
@@ -12,7 +13,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
-from app.common.database import db_session
+from app.common.database import isolated_db_session
 from app.common.schemas.internal import ImdbInfo
 from app.modules.auth.dependencies import create_auth_service
 from app.modules.playback_histories.dependencies import (
@@ -52,10 +53,12 @@ async def stream(
         ip=request.client.host if request.client else None,
     )
 
-    with db_session() as local_db:
+    with isolated_db_session() as local_db:
         auth_service = create_auth_service(local_db)
-        user = auth_service.verify_api_key(api_key=api_key)
-        user_id = user.id
+        user = await asyncio.to_thread(
+            auth_service.verify_api_key,
+            api_key=api_key,
+        )
 
         playbacks_service = create_playbacks_service(
             relay_service=get_relay_service(),
@@ -84,7 +87,7 @@ async def stream(
         await stream_service.save_playback_history(
             stream_token=stream_token,
             client_info=client_info,
-            user_id=user_id,
+            user_id=user.id,
             file=file,
             imdb_info=imdb_info,
         )
@@ -95,6 +98,7 @@ async def stream(
     headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store, no-transform",
+        "Connection": "close",
     }
 
     if range_header is None:
@@ -108,23 +112,43 @@ async def stream(
         )
 
     if request.method == "HEAD":
-        return Response(
-            status_code=status_code,
-            headers=headers,
-            media_type=media_type,
+        return _apply_capitalized_headers(
+            Response(
+                status_code=status_code,
+                headers=headers,
+                media_type=media_type,
+            )
         )
 
     iterator = await file.stream(
         playback_id=stream_token.playback_id,
-        user_id=user_id,
+        user_id=user.id,
         request=request,
         stream_start_byte=parsed_range_header.start_byte,
         stream_end_byte=parsed_range_header.end_byte,
     )
 
-    return StreamingResponse(
-        content=iterator,
-        media_type=media_type,
-        status_code=status_code,
-        headers=headers,
+    return _apply_capitalized_headers(
+        StreamingResponse(
+            content=iterator,
+            media_type=media_type,
+            status_code=status_code,
+            headers=headers,
+        )
     )
+
+
+def _apply_capitalized_headers(response: Response) -> Response:
+    overrides = {
+        b"content-length": b"Content-Length",
+        b"content-range": b"Content-Range",
+        b"accept-ranges": b"Accept-Ranges",
+        b"cache-control": b"Cache-Control",
+        b"content-type": b"Content-Type",
+        b"connection": b"Connection",
+    }
+    headers = []
+    for key, value in response.raw_headers:
+        headers.append((overrides.get(key, key), value))
+    response.raw_headers = headers
+    return response

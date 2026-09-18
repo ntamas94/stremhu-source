@@ -12,10 +12,12 @@ from app.modules.indexer_definitions.base_indexer_definition import (
     BaseIndexerDefinition,
     IndexerClient,
 )
-from app.modules.indexer_definitions.enums import AuthenticationErrorEnum
 from app.modules.indexer_definitions.schemas.internal import (
+    AuthCredentialError,
+    AuthError,
+    AuthSessionError,
     IndexerDefinitionFindTorrentsResult,
-    IndexerDefinitionLogin,
+    IndexerDefinitionLoginPayload,
     IndexerDefinitionTorrent,
 )
 from app.modules.media_attributes.constants import MediaAttributeKey
@@ -150,15 +152,16 @@ class HunTorrentIndexerDefinition(BaseIndexerDefinition):
 
     @property
     def requires_full_download(self) -> bool:
-        return True
+        return False
 
     @property
     def max_concurrent(self) -> int:
         return 3
 
     def _detect_authentication_error(
-        self, response: httpx.Response
-    ) -> AuthenticationErrorEnum | None:
+        self,
+        response: httpx.Response,
+    ) -> AuthError:
         request_path = urlparse(str(response.request.url)).path
 
         # A bejelentkezés JSON-nal válaszol: hibás adatoknál {"wrong": true, ...}
@@ -166,9 +169,9 @@ class HunTorrentIndexerDefinition(BaseIndexerDefinition):
         if request_path.startswith(_LOGIN_API_PATH):
             try:
                 if response.json().get("wrong") is True:
-                    return AuthenticationErrorEnum.CREDENTIAL_ERROR
+                    return AuthCredentialError()
             except ValueError:
-                return AuthenticationErrorEnum.CREDENTIAL_ERROR
+                return AuthCredentialError()
 
             return None
 
@@ -180,7 +183,7 @@ class HunTorrentIndexerDefinition(BaseIndexerDefinition):
 
         # Bármely más kérés a /login/-ra fut ki: lejárt a munkamenet.
         if urlparse(str(response.url)).path.startswith("/login"):
-            return AuthenticationErrorEnum.SESSION_ERROR
+            return AuthSessionError()
 
         # Az oldal nem mindig irányít át: előfordulhat, hogy a kért útvonalon
         # szolgálja ki a bejelentkező űrlapot. Ilyenkor az URL alapján semmi nem
@@ -190,13 +193,13 @@ class HunTorrentIndexerDefinition(BaseIndexerDefinition):
         # belépett állapotú oldalakon nem, így nem ad hamis riasztást.
         content_type = response.headers.get("content-type", "")
         if content_type.startswith("text/html") and "loginForm" in response.text:
-            return AuthenticationErrorEnum.SESSION_ERROR
+            return AuthSessionError()
 
         return None
 
     async def _login(
         self,
-        credential: IndexerDefinitionLogin,
+        payload: IndexerDefinitionLoginPayload,
     ) -> httpx.Response:
         # Az oldal reCAPTCHA-t kapcsol be, ha a szerver oldali loginattempts
         # számláló nagyobb nullánál, azaz volt már sikertelen próbálkozás.
@@ -210,8 +213,8 @@ class HunTorrentIndexerDefinition(BaseIndexerDefinition):
                 "action": "login",
                 "return_url": "/index.php",
                 "csrf_token": _get_attribute(csrf_node, "value") or "",
-                "username": credential.username,
-                "password": credential.password,
+                "username": payload.username,
+                "password": payload.password,
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )

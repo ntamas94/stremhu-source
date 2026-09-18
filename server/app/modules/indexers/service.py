@@ -11,6 +11,7 @@ from app.modules.indexer_accounts.schemas import (
 from app.modules.indexer_accounts.service import IndexerAccountsService
 from app.modules.indexer_definitions.exceptions import (
     AuthenticationException,
+    AuthenticationOtherException,
     CredentialsRequiredException,
 )
 from app.modules.indexer_definitions.schemas.internal import IndexerDefinitionLogin
@@ -63,6 +64,7 @@ class IndexersService:
                 IndexerDefinitionLogin(
                     username=payload.username,
                     password=payload.password,
+                    totp_secret=payload.totp_secret,
                 )
             )
 
@@ -72,6 +74,7 @@ class IndexersService:
                     indexer_id=indexer_definition.id,
                     username=payload.username,
                     password=payload.password,
+                    totp_secret=payload.totp_secret,
                     download_full_torrent=indexer_definition.requires_full_download,
                     cookies=indexer_definition.cookies,
                 ),
@@ -86,6 +89,11 @@ class IndexersService:
         except AuthenticationException as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+        except AuthenticationOtherException as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=str(e),
             )
         except Exception as e:
@@ -169,7 +177,22 @@ class IndexersService:
                 ),
             )
 
-        tasks = [fetch_and_map(indexer_account) for indexer_account in indexer_accounts]
+        async def fetch_and_map_with_timeout(
+            indexer_account: IndexerAccountModel,
+        ) -> IndexerTorrent | None:
+            try:
+                return await asyncio.wait_for(
+                    fetch_and_map(indexer_account), timeout=12.5
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"A(z) '{indexer_account.indexer_definition.name}' indexer nem válaszolt időben."
+                )
+
+        tasks = [
+            fetch_and_map_with_timeout(indexer_account)
+            for indexer_account in indexer_accounts
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         indexer_torrents: list[IndexerTorrent] = []
@@ -248,7 +271,22 @@ class IndexersService:
                 for indexer_definition_torrent in indexer_definition_torrents
             ]
 
-        tasks = [fetch_and_map(indexer_account) for indexer_account in indexer_accounts]
+        async def fetch_and_map_with_timeout(
+            indexer_account: IndexerAccountModel,
+        ) -> list[IndexerTorrent]:
+            try:
+                return await asyncio.wait_for(
+                    fetch_and_map(indexer_account), timeout=12.5
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"A(z) '{indexer_account.indexer_definition.name}' indexer nem válaszolt időben."
+                )
+
+        tasks = [
+            fetch_and_map_with_timeout(indexer_account)
+            for indexer_account in indexer_accounts
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         indexer_torrents: list[IndexerTorrent] = []

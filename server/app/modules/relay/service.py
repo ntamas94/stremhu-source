@@ -136,27 +136,21 @@ class RelayService:
 
     def get_active_streams(self) -> list[Stream]:
         streams = []
-        for torrent in self._torrents.values():
-            for file in torrent.files.values():
+        for torrent in list(self._torrents.values()):
+            for file in list(torrent.files.values()):
                 streams.extend(list(file.streams.values()))
         return streams
 
-    def _get_torrents(
-        self,
-    ) -> list[libtorrent.torrent_handle]:
-        torrent_handlers = self._libtorrent_session.get_torrents()
-
-        valid_torrent_handlers = [
-            torrent_handler
-            for torrent_handler in torrent_handlers
-            if torrent_handler.is_valid()
-        ]
-
-        return valid_torrent_handlers
-
     def get_torrent_file(self, info_hash: str, file_index: int) -> File:
         sha1_info_hash = self._parse_info_hash(info_hash)
-        file = self._torrents[sha1_info_hash].files[file_index]
+
+        torrent = self._torrents.get(sha1_info_hash)
+        if torrent is None:
+            raise HTTPException(404, f'"{info_hash}" torrent nem található.')
+
+        file = torrent.files.get(file_index)
+        if file is None:
+            raise HTTPException(400, "Érvénytelen fájl index.")
 
         return file
 
@@ -167,24 +161,31 @@ class RelayService:
     ) -> bytes:
         info_hash = str(torrent_handle.info_hash())
         request_key = (info_hash, piece_index)
-        future: asyncio.Future[bytes] = self.loop.create_future()
+        for attempt in range(4):
+            future: asyncio.Future[bytes] = self.loop.create_future()
+            requests = self.pending_piece_requests.setdefault(request_key, [])
+            requests.append(future)
 
-        requests = self.pending_piece_requests.setdefault(request_key, [])
-        requests.append(future)
+            if torrent_handle.have_piece(piece_index):
+                torrent_handle.read_piece(piece_index)
 
-        if torrent_handle.have_piece(piece_index):
-            torrent_handle.read_piece(piece_index)
+            try:
+                return await future
+            except FileNotFoundError:
+                if attempt < 3:
+                    await asyncio.sleep(0.5)
+                    continue
+                raise
+            finally:
+                if future in requests:
+                    requests.remove(future)
+                    if not requests:
+                        self.pending_piece_requests.pop(request_key, None)
 
-        try:
-            return await future
-        finally:
-            if future in requests:
-                requests.remove(future)
-                if not requests:
-                    self.pending_piece_requests.pop(request_key, None)
+                if not future.done():
+                    future.cancel()
 
-            if not future.done():
-                future.cancel()
+        raise RuntimeError("Unreachable")
 
     def add_torrent(
         self,
@@ -255,17 +256,6 @@ class RelayService:
 
         return relay_torrent
 
-    def _get_torrent(
-        self,
-        info_hash: libtorrent.sha1_hash,
-    ) -> libtorrent.torrent_handle | None:
-        torrent_handle = self._libtorrent_session.find_torrent(info_hash)
-
-        if not torrent_handle.is_valid():
-            return None
-
-        return torrent_handle
-
     def delete_torrent(
         self,
         info_hash: str,
@@ -280,7 +270,9 @@ class RelayService:
         if torrent_handle is None:
             return False
 
-        del self._torrents[info_hash]
+        # A libtorrent session előbb kapja meg a torrentet, mint a _torrents dict
+        # (és az add_torrent külön thread-en is futhat), ezért a hiányzó kulcs nem hiba.
+        self._torrents.pop(info_hash, None)
 
         self._libtorrent_session.remove_torrent(
             torrent_handle,
@@ -342,10 +334,18 @@ class RelayService:
                             has_error = alert.error and alert.error.value() != 0
 
                             if has_error:
+                                error_msg = alert.error.message()
+                                error_code = alert.error.value()
+
                                 logger.error(
-                                    f"Hiba a libtorrent.read_piece_alert során: {alert.error.message()}"
+                                    f"Hiba a libtorrent.read_piece_alert során: {error_msg} (Kód: {error_code})"
                                 )
-                                err = Exception(alert.error.message())
+
+                                if error_code in (2, 3):
+                                    err = FileNotFoundError(error_msg)
+                                else:
+                                    err = Exception(error_msg)
+
                                 for future in futures:
                                     if not future.done():
                                         self.loop.call_soon_threadsafe(
@@ -368,3 +368,27 @@ class RelayService:
     ) -> libtorrent.sha1_hash:
         info_hash = libtorrent.sha1_hash(bytes.fromhex(info_hash_str))
         return info_hash
+
+    def _get_torrents(
+        self,
+    ) -> list[libtorrent.torrent_handle]:
+        torrent_handlers = self._libtorrent_session.get_torrents()
+
+        valid_torrent_handlers = [
+            torrent_handler
+            for torrent_handler in torrent_handlers
+            if torrent_handler.is_valid()
+        ]
+
+        return valid_torrent_handlers
+
+    def _get_torrent(
+        self,
+        info_hash: libtorrent.sha1_hash,
+    ) -> libtorrent.torrent_handle | None:
+        torrent_handle = self._libtorrent_session.find_torrent(info_hash)
+
+        if not torrent_handle.is_valid():
+            return None
+
+        return torrent_handle

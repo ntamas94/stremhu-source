@@ -11,10 +11,12 @@ from selectolax.parser import HTMLParser
 from app.modules.indexer_definitions.base_indexer_definition import (
     BaseIndexerDefinition,
 )
-from app.modules.indexer_definitions.enums import AuthenticationErrorEnum
 from app.modules.indexer_definitions.schemas.internal import (
+    AuthCredentialError,
+    AuthError,
+    AuthSessionError,
     IndexerDefinitionFindTorrentsResult,
-    IndexerDefinitionLogin,
+    IndexerDefinitionLoginPayload,
     IndexerDefinitionTorrent,
 )
 from app.modules.media_attributes.constants import MediaAttributeKey
@@ -63,7 +65,7 @@ class InsaneIndexerDefinition(BaseIndexerDefinition):
     def _detect_authentication_error(
         self,
         response: httpx.Response,
-    ) -> AuthenticationErrorEnum | None:
+    ) -> AuthError:
         final_path = str(response.url.path)
         original_url = str(response.request.url)
         if response.history:
@@ -73,20 +75,20 @@ class InsaneIndexerDefinition(BaseIndexerDefinition):
 
         if ended_up_at_login:
             if self.login_path in original_url:
-                return AuthenticationErrorEnum.CREDENTIAL_ERROR
-            return AuthenticationErrorEnum.SESSION_ERROR
+                return AuthCredentialError()
+            return AuthSessionError()
 
         return None
 
     async def _login(
         self,
-        credential: IndexerDefinitionLogin,
+        payload: IndexerDefinitionLoginPayload,
     ) -> httpx.Response:
         return await self._client.post(
             self.login_path,
             data={
-                "username": credential.username,
-                "password": credential.password,
+                "username": payload.username,
+                "password": payload.password,
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )

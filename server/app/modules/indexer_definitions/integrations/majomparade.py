@@ -7,10 +7,12 @@ from selectolax.parser import HTMLParser
 from app.modules.indexer_definitions.base_indexer_definition import (
     BaseIndexerDefinition,
 )
-from app.modules.indexer_definitions.enums import AuthenticationErrorEnum
 from app.modules.indexer_definitions.schemas.internal import (
+    AuthCredentialError,
+    AuthError,
+    AuthSessionError,
     IndexerDefinitionFindTorrentsResult,
-    IndexerDefinitionLogin,
+    IndexerDefinitionLoginPayload,
     IndexerDefinitionTorrent,
 )
 from app.modules.media_attributes.constants import MediaAttributeKey
@@ -60,7 +62,7 @@ class MajomparadeIndexerDefinition(BaseIndexerDefinition):
     def _detect_authentication_error(
         self,
         response: httpx.Response,
-    ) -> AuthenticationErrorEnum | None:
+    ) -> AuthError:
         original_url = str(response.request.url)
 
         if self.login_path in original_url and response.request.method == "POST":
@@ -72,25 +74,25 @@ class MajomparadeIndexerDefinition(BaseIndexerDefinition):
                 success = False
 
             if success is False:
-                return AuthenticationErrorEnum.CREDENTIAL_ERROR
+                return AuthCredentialError()
 
             return None
 
         final_path = str(response.url.path)
         if self.login_path in final_path:
-            return AuthenticationErrorEnum.SESSION_ERROR
+            return AuthSessionError()
 
         return None
 
     async def _login(
         self,
-        credential: IndexerDefinitionLogin,
+        payload: IndexerDefinitionLoginPayload,
     ) -> httpx.Response:
         return await self._client.post(
             "/login/do",
             data={
-                "username": credential.username,
-                "password": credential.password,
+                "username": payload.username,
+                "password": payload.password,
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
