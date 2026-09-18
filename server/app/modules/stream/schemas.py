@@ -3,6 +3,12 @@ from pydantic import BaseModel
 from app.common.schemas.internal import SeriesInfo
 
 
+class StreamAlternate(BaseModel):
+    indexer_id: str
+    torrent_id: str
+    file_index: int
+
+
 class StreamToken(BaseModel):
     indexer_id: str
     torrent_id: str
@@ -10,6 +16,8 @@ class StreamToken(BaseModel):
     playback_id: str
     imdb_id: str | None = None
     series_info: SeriesInfo | None = None
+    # Azonos nevű release más indexerről: tracker-egyesítéshez és tartaléknak.
+    alternates: list[StreamAlternate] = []
 
 
 class ParsedRangeHeader(BaseModel):

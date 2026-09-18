@@ -7,6 +7,11 @@ from app.common.schemas.internal import SeriesInfo
 from app.modules.attributes.models import AttributeModel
 from app.modules.preferences.service import PreferencesService
 from app.modules.settings.service import SettingsService
+from app.modules.stream.schemas import StreamAlternate
+from app.modules.stream.utils.stream_token import (
+    generate_stream_token,
+    parse_stream_token,
+)
 from app.modules.torrent_source_provider.service import (
     TorrentSourceProviderService,
 )
@@ -64,6 +69,7 @@ class TorrentStreamsService:
         sorted_torrent_streams = self._sort_torrent_streams(
             filtered_torrent_streams, user
         )
+        sorted_torrent_streams = self._merge_same_release(sorted_torrent_streams)
 
         if user.enable_smart_filter:
             limit = user.smart_filter_limit
@@ -92,6 +98,49 @@ class TorrentStreamsService:
                 sorted_torrent_streams = grouped_torrent_streams[:limit]
 
         return sorted_torrent_streams, indexer_errors
+
+    def _merge_same_release(
+        self, sorted_torrent_streams: list[TorrentStream]
+    ) -> list[TorrentStream]:
+        """Azonos release (torrent név + fájl név + méret) több indexerről: egy sor.
+
+        A rendezésben legjobb marad az elsődleges, a többi a tokenbe kerül
+        tartaléknak / tracker-egyesítéshez.
+        """
+        max_alternates = 3  # a token az URL-ben utazik, ne nőjön korlátlanul
+
+        primaries: dict[tuple[str, str, int], TorrentStream] = {}
+        alternates: dict[tuple[str, str, int], list[StreamAlternate]] = {}
+
+        for torrent_stream in sorted_torrent_streams:
+            key = (
+                torrent_stream.torrent_name.casefold(),
+                torrent_stream.file_name.casefold(),
+                torrent_stream.file_size,
+            )
+            primary = primaries.get(key)
+            if primary is None:
+                primaries[key] = torrent_stream
+                continue
+
+            primary.seeders = (primary.seeders or 0) + (torrent_stream.seeders or 0)
+            if len(alternates.setdefault(key, [])) < max_alternates:
+                alternates[key].append(
+                    StreamAlternate(
+                        indexer_id=torrent_stream.indexer_account.indexer_id,
+                        torrent_id=torrent_stream.torrent_id,
+                        file_index=torrent_stream.file_index,
+                    )
+                )
+
+        for key, stream_alternates in alternates.items():
+            primary = primaries[key]
+            base_url, token = primary.play_url.rsplit("/", 1)
+            stream_token = parse_stream_token(token)
+            stream_token.alternates = stream_alternates
+            primary.play_url = f"{base_url}/{generate_stream_token(stream_token)}"
+
+        return list(primaries.values())
 
     async def find_by_torrent_id(
         self,

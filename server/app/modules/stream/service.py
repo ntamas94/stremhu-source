@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from fastapi import HTTPException
 
@@ -18,6 +19,7 @@ from app.modules.relay.entities import File
 from app.modules.relay.service import RelayService
 from app.modules.stream.schemas import (
     ParsedRangeHeader,
+    StreamAlternate,
     StreamToken,
 )
 from app.modules.torrent_files.isolated_service import IsolatedTorrentFilesService
@@ -32,6 +34,10 @@ from app.modules.torrents.service import TorrentsService
 
 torrent_locks = KeyedLock()
 playback_history_lock = KeyedLock()
+
+# Hibás forrást ennyi ideig nem próbálunk újra (minden range kérés ide fut be).
+FAILED_SOURCE_TTL_SECONDS = 300
+failed_sources: dict[str, float] = {}
 
 
 class StreamService:
@@ -55,7 +61,69 @@ class StreamService:
         indexer_id: str,
         torrent_id: str,
         file_index: int,
+        alternates: list[StreamAlternate] | None = None,
     ) -> tuple[ParsedRangeHeader, File]:
+        sources = [
+            StreamAlternate(
+                indexer_id=indexer_id, torrent_id=torrent_id, file_index=file_index
+            ),
+            *(alternates or []),
+        ]
+
+        file: File | None = None
+        last_error: Exception | None = None
+
+        # ponytail: a tartalék csak indítási hibára vált (indexer/torrent fájl),
+        # halott swarm-ot nem érzékel; ahhoz piece-timeout kellene a relay-ben.
+        for index, source in enumerate(sources):
+            source_key = f"{source.indexer_id}:{source.torrent_id}"
+            is_last = index == len(sources) - 1
+            if (
+                not is_last
+                and time.monotonic()
+                - failed_sources.get(source_key, -FAILED_SOURCE_TTL_SECONDS)
+                < FAILED_SOURCE_TTL_SECONDS
+            ):
+                continue
+
+            try:
+                torrent_with_relay, created = await self._ensure_torrent(source)
+            except Exception as error:
+                failed_sources[source_key] = time.monotonic()
+                logger.warning(
+                    f"Forrás nem indítható ({source.indexer_id}:{source.torrent_id}): {error}"
+                )
+                last_error = error
+                continue
+
+            file = self._relay_service.get_torrent_file(
+                info_hash=torrent_with_relay.info_hash,
+                file_index=source.file_index,
+            )
+
+            if created:
+                await self._merge_same_hash_sources(
+                    torrent_with_relay.info_hash, sources[index + 1 :]
+                )
+            break
+
+        if file is None:
+            assert last_error is not None
+            raise last_error
+
+        parsed_range_header = self._parse_range_header(
+            file_size=file.size,
+            range_header=range_header,
+        )
+
+        return parsed_range_header, file
+
+    async def _ensure_torrent(
+        self, source: StreamAlternate
+    ) -> tuple[TorrentWithRelay, bool]:
+        indexer_id = source.indexer_id
+        torrent_id = source.torrent_id
+
         self._isolated_torrent_files_service.touch(
             TorrentFileIdentifier(indexer_id=indexer_id, torrent_id=torrent_id)
         )
@@ -67,51 +135,64 @@ class StreamService:
                 torrent_id=torrent_id,
             )
 
-            if torrent_with_relay is None:
-                torrent_file = await asyncio.to_thread(
-                    self._torrent_files_service.find_by_id,
+            if torrent_with_relay is not None:
+                return torrent_with_relay, False
+
+            torrent_file = await asyncio.to_thread(
+                self._torrent_files_service.find_by_id,
+                indexer_id=indexer_id,
+                torrent_id=torrent_id,
+            )
+
+            if torrent_file is None:
+                indexer_torrent = (
+                    await self._indexers_service.get_torrent_by_torrent_id(
+                        indexer_id=indexer_id, torrent_id=torrent_id
+                    )
+                )
+                downloaded_torrent_file = await self._indexers_service.download_torrent(
                     indexer_id=indexer_id,
                     torrent_id=torrent_id,
+                    download_url=indexer_torrent.download_url,
                 )
 
-                if torrent_file is None:
-                    indexer_torrent = (
-                        await self._indexers_service.get_torrent_by_torrent_id(
-                            indexer_id=indexer_id, torrent_id=torrent_id
-                        )
-                    )
-                    downloaded_torrent_file = (
-                        await self._indexers_service.download_torrent(
-                            indexer_id=indexer_id,
-                            torrent_id=torrent_id,
-                            download_url=indexer_torrent.download_url,
-                        )
-                    )
-
-                    torrent_file = await asyncio.to_thread(
-                        self._isolated_torrent_files_service.create,
-                        indexer_id=indexer_id,
-                        torrent_id=torrent_id,
-                        torrent_bytes=downloaded_torrent_file.torrent_bytes,
-                    )
-
-                torrent_with_relay = await asyncio.to_thread(
-                    self._create_torrent,
-                    torrent_file=torrent_file,
-                    file_index=file_index,
+                torrent_file = await asyncio.to_thread(
+                    self._isolated_torrent_files_service.create,
+                    indexer_id=indexer_id,
+                    torrent_id=torrent_id,
+                    torrent_bytes=downloaded_torrent_file.torrent_bytes,
                 )
 
-        file = self._relay_service.get_torrent_file(
-            info_hash=torrent_with_relay.info_hash,
-            file_index=file_index,
-        )
+            torrent_with_relay = await asyncio.to_thread(
+                self._create_torrent,
+                torrent_file=torrent_file,
+                file_index=source.file_index,
+            )
+            return torrent_with_relay, True
 
-        parsed_range_header = self._parse_range_header(
-            file_size=file.size,
-            range_header=range_header,
-        )
+    async def _merge_same_hash_sources(
+        self, info_hash: str, sources: list[StreamAlternate]
+    ) -> None:
+        """Azonos info_hash-ű alternatívák trackereit a futó torrenthez adja.
 
-        return parsed_range_header, file
+        Csak a már cache-elt torrent fájlokat nézi, indexert nem hív, és a
+        lejátszást sosem töri meg.
+        """
+        for source in sources:
+            try:
+                torrent_file = await asyncio.to_thread(
+                    self._torrent_files_service.find_by_id,
+                    indexer_id=source.indexer_id,
+                    torrent_id=source.torrent_id,
+                )
+                if torrent_file is None or torrent_file.info.info_hash != info_hash:
+                    continue
+
+                await self._ensure_torrent(source)
+            except Exception as error:
+                logger.warning(
+                    f"Tracker egyesítés sikertelen ({source.indexer_id}:{source.torrent_id}): {error}"
+                )
 
     async def save_playback_history(
         self,
