@@ -6,12 +6,18 @@ import libtorrent as libtorrent
 from fastapi import HTTPException
 
 from app.common.logger import logger
-from app.common.torrent_info import parse_torrent_info
+from app.common.torrent_info import TorrentInfo, parse_torrent_info
 from app.config import config
 from app.modules.relay.entities import File, Stream, Torrent
 from app.modules.relay.schemas import (
     RelaySettingsUpdate,
     RelayTorrent,
+)
+from app.modules.relay.swarm_link import (
+    Segment,
+    bridgeable_segments,
+    candidate_pieces,
+    is_linkable,
 )
 
 
@@ -238,8 +244,83 @@ class RelayService:
         )
 
         self._torrents[torrent_info.info_hash()] = torrent
+        self._link_siblings(torrent)
 
         return RelayTorrent.from_libtorrent_handle(torrent_handle)
+
+    def _link_siblings(self, torrent: Torrent) -> None:
+        for other in list(self._torrents.values()):
+            if other is not torrent and is_linkable(torrent.info, other.info):
+                torrent.link(other)
+                logger.info(
+                    f"Dupla swarm: {torrent.name} ({torrent.info_hash} <-> {other.info_hash})"
+                )
+
+    def is_linkable(self, info_hash: str, torrent_info: TorrentInfo) -> bool:
+        """Futó torrenttel azonos tartalmú, de más info_hash-ű torrent-e."""
+        torrent = self._torrents.get(self._parse_info_hash(info_hash))
+        return torrent is not None and is_linkable(torrent.info, torrent_info)
+
+    def _bridge_piece(self, source: Torrent, piece_index: int) -> None:
+        """A forrás kész darabjából kirakható testvér darabokat lemezről átadja.
+
+        Az add_piece hash-ellenőrzést végez, hibás adat nem kerülhet be.
+        """
+        for target in list(source.siblings):
+            try:
+                if not target.torrent_handle.is_valid():
+                    continue
+
+                state = target.torrent_handle.status().state
+                if state in (
+                    libtorrent.torrent_status.checking_files,
+                    libtorrent.torrent_status.checking_resume_data,
+                ):
+                    continue
+
+                for target_piece in candidate_pieces(
+                    source.info, target.info, piece_index
+                ):
+                    if (
+                        target_piece in target.bridged_pieces
+                        or target.torrent_handle.have_piece(target_piece)
+                    ):
+                        continue
+
+                    segments = bridgeable_segments(
+                        source.info,
+                        target.info,
+                        target_piece,
+                        source.torrent_handle.have_piece,
+                    )
+                    if segments is None:
+                        continue
+
+                    data = self._read_segments(segments)
+                    if data is None:
+                        continue
+
+                    target.bridged_pieces.add(target_piece)
+                    target.torrent_handle.add_piece(target_piece, data, 0)
+            except Exception:
+                logger.exception("Hiba történt a dupla swarm darab átadása közben.")
+
+    def _read_segments(self, segments: list[Segment]) -> bytes | None:
+        chunks: list[bytes] = []
+        for segment in segments:
+            path = config.downloads_dir.absolute() / segment.path
+            try:
+                with open(path, "rb") as file:
+                    file.seek(segment.offset)
+                    chunk = file.read(segment.length)
+            except OSError:
+                return None
+
+            if len(chunk) != segment.length:
+                return None
+            chunks.append(chunk)
+
+        return b"".join(chunks)
 
     def get_torrent(
         self,
@@ -282,12 +363,21 @@ class RelayService:
 
         # A libtorrent session előbb kapja meg a torrentet, mint a _torrents dict
         # (és az add_torrent külön thread-en is futhat), ezért a hiányzó kulcs nem hiba.
-        self._torrents.pop(info_hash, None)
+        torrent = self._torrents.pop(info_hash, None)
 
-        self._libtorrent_session.remove_torrent(
-            torrent_handle,
-            libtorrent.options_t.delete_files,
-        )
+        # A testvér torrent ugyanazokat a fájlokat használja, ezért csak az
+        # utolsó törli őket a lemezről.
+        has_siblings = torrent is not None and bool(torrent.siblings)
+        if torrent is not None:
+            torrent.unlink()
+
+        if has_siblings:
+            self._libtorrent_session.remove_torrent(torrent_handle)
+        else:
+            self._libtorrent_session.remove_torrent(
+                torrent_handle,
+                libtorrent.options_t.delete_files,
+            )
 
         return True
 
@@ -333,6 +423,19 @@ class RelayService:
                     case libtorrent.piece_finished_alert():
                         info_hash = str(alert.handle.info_hash())
                         self.trigger_priority_update(info_hash)
+
+                        torrent = self._torrents.get(alert.handle.info_hash())
+                        if torrent is not None and torrent.siblings:
+                            # Testvértől add_piece-szel érkezett darabnál nincs
+                            # alert_when_available, a várakozó olvasót mi ébresztjük.
+                            if (info_hash, alert.piece_index) in (
+                                self.pending_piece_requests
+                            ):
+                                alert.handle.read_piece(alert.piece_index)
+
+                            self.loop.run_in_executor(
+                                None, self._bridge_piece, torrent, alert.piece_index
+                            )
 
                     case libtorrent.read_piece_alert():
                         info_hash = str(alert.handle.info_hash())

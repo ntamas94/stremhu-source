@@ -37,6 +37,10 @@ class Config(BaseSettings):
 
     port: int = 7070
 
+    # Kísérleti: azonos release más indexerről is elindul, a két swarm
+    # darabjai egymásnak átadódnak (DUAL_SWARM=true).
+    dual_swarm: bool = False
+
     @property
     def libtorrent_port(self) -> int:
         return 6881

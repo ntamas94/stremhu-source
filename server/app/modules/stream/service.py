@@ -7,6 +7,7 @@ from app.common.database import isolated_db_session
 from app.common.keyed_lock import KeyedLock
 from app.common.logger import logger
 from app.common.schemas.internal import ImdbInfo
+from app.config import config
 from app.modules.indexers.service import IndexersService
 from app.modules.playback_histories.dependencies import (
     create_playback_histories_service,
@@ -107,7 +108,7 @@ class StreamService:
                 file_index=source.file_index,
             )
 
-            if created:
+            if created or config.dual_swarm:
                 await self._merge_same_hash_sources(
                     torrent_with_relay.info_hash, sources[index + 1 :]
                 )
@@ -191,6 +192,9 @@ class StreamService:
     ) -> None:
         """Azonos info_hash-ű alternatívák trackereit a futó torrenthez adja.
 
+        DUAL_SWARM mellett az azonos tartalmú, de más info_hash-ű alternatíva
+        külön torrentként indul, a relay köti össze őket.
+
         Csak a már cache-elt torrent fájlokat nézi, indexert nem hív, és a
         lejátszást sosem töri meg.
         """
@@ -201,7 +205,14 @@ class StreamService:
                     indexer_id=source.indexer_id,
                     torrent_id=source.torrent_id,
                 )
-                if torrent_file is None or torrent_file.info.info_hash != info_hash:
+                if torrent_file is None:
+                    continue
+
+                same_hash = torrent_file.info.info_hash == info_hash
+                dual_swarm = config.dual_swarm and self._relay_service.is_linkable(
+                    info_hash, torrent_file.info
+                )
+                if not same_hash and not dual_swarm:
                     continue
 
                 await self._ensure_torrent(source)
