@@ -34,6 +34,8 @@ class TorrentStream(BaseModel):
     seeders: int | None = None
     attributes: list[MediaAttributeModel | IndexerDefinitionModel] = []
     is_persisted_torrent: bool
+    # Összevont (azonos release) sornál a további indexerek megjelenítendő neve.
+    merged_indexer_names: list[str] = []
 
     @classmethod
     def from_torrent_id(

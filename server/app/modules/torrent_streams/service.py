@@ -124,6 +124,13 @@ class TorrentStreamsService:
                 continue
 
             primary.seeders = (primary.seeders or 0) + (torrent_stream.seeders or 0)
+            indexer_name = torrent_stream.indexer_account.indexer_definition.name
+            primary_name = primary.indexer_account.indexer_definition.name
+            if (
+                indexer_name != primary_name
+                and indexer_name not in primary.merged_indexer_names
+            ):
+                primary.merged_indexer_names.append(indexer_name)
             if len(alternates.setdefault(key, [])) < max_alternates:
                 alternates[key].append(
                     StreamAlternate(

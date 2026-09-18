@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 from app.modules.indexer_accounts.models import IndexerAccountModel
+from app.modules.indexer_definitions.models import IndexerDefinitionModel
 from app.modules.stream.schemas import StreamToken
 from app.modules.stream.utils.stream_token import (
     generate_stream_token,
@@ -8,6 +9,8 @@ from app.modules.stream.utils.stream_token import (
 )
 from app.modules.torrent_streams.schemas import TorrentStream
 from app.modules.torrent_streams.service import TorrentStreamsService
+
+INDEXER_NAMES = {"ncore": "nCore", "bithumen": "BitHUmen"}
 
 
 def create_stream(indexer_id: str, torrent_id: str, name: str, seeders: int | None):
@@ -19,10 +22,14 @@ def create_stream(indexer_id: str, torrent_id: str, name: str, seeders: int | No
             playback_id="playback",
         )
     )
+    indexer_account = IndexerAccountModel(
+        indexer_id=indexer_id, username="test", password="pwd"
+    )
+    indexer_account.indexer_definition = Mock(spec=IndexerDefinitionModel, name=None)
+    indexer_account.indexer_definition.name = INDEXER_NAMES[indexer_id]
+
     return TorrentStream(
-        indexer_account=IndexerAccountModel(
-            indexer_id=indexer_id, username="test", password="pwd"
-        ),
+        indexer_account=indexer_account,
         torrent_id=torrent_id,
         info_hash=f"hash-{indexer_id}",
         torrent_name=name,
@@ -54,6 +61,8 @@ def test_merge_same_release():
 
     assert [stream.torrent_id for stream in merged] == ["1", "3"]
     assert merged[0].seeders == 10
+    assert merged[0].merged_indexer_names == ["BitHUmen"]
+    assert merged[1].merged_indexer_names == []
 
     token = parse_stream_token(merged[0].play_url.rsplit("/", 1)[1])
     assert token.playback_id == "playback"
