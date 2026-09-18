@@ -72,3 +72,33 @@ def test_merge_same_release():
 
     untouched = parse_stream_token(merged[1].play_url.rsplit("/", 1)[1])
     assert untouched.alternates == []
+
+
+def test_merged_label_breaks_line_after_indexers():
+    from app.modules.stremio.schemas import StremioStream
+
+    service = TorrentStreamsService(
+        db=Mock(),
+        torrent_source_provider_service=Mock(),
+        torrents_service=Mock(),
+        settings_service=Mock(),
+        preferences_service=Mock(),
+    )
+    merged = service._merge_same_release(
+        [
+            create_stream("ncore", "1", "Movie.2024.1080p", 10),
+            create_stream("bithumen", "2", "Movie.2024.1080p", 5),
+            create_stream("ncore", "3", "Other.2024.1080p", 3),
+        ]
+    )
+
+    merged_lines = StremioStream.from_imdb_torrent_stream(merged[0]).description.split(
+        "\n"
+    )
+    assert merged_lines[0] == "🧲 nCore + BitHUmen"
+    assert merged_lines[1].startswith("👥 15 | 💾 ")
+
+    single_lines = StremioStream.from_imdb_torrent_stream(merged[1]).description.split(
+        "\n"
+    )
+    assert single_lines[0].startswith("🧲 nCore | 👥 3 | 💾 ")
