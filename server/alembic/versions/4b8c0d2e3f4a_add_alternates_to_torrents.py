@@ -1,7 +1,7 @@
 """add_alternates_to_torrents
 
 Revision ID: 4b8c0d2e3f4a
-Revises: 3a7b9c1d2e3f
+Revises: c30e6d9dd16d
 Create Date: 2026-09-18 14:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "4b8c0d2e3f4a"
-down_revision: str | None = "3a7b9c1d2e3f"
+down_revision: str | None = "c30e6d9dd16d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
