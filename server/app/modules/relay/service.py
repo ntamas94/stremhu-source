@@ -211,9 +211,9 @@ class RelayService:
         existing = self._torrents.get(torrent_info.info_hash())
         if existing is not None:
             for tracker in torrent_info.trackers():
-                existing.torrent_handle.add_tracker(
-                    {"url": tracker.url, "tier": tracker.tier}
-                )
+                # A binding futásidőben dict-et vár, a types-libtorrent stub téved.
+                announce_entry = {"url": tracker.url, "tier": tracker.tier}
+                existing.torrent_handle.add_tracker(announce_entry)  # pyright: ignore[reportArgumentType]
             return RelayTorrent.from_libtorrent_handle(existing.torrent_handle)
 
         params: libtorrent.add_torrent_params | None = None
