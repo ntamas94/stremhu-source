@@ -134,23 +134,11 @@ class Torrent:
     def _mirror_deadlines(self, target_deadlines: dict[int, int]) -> None:
         """A lejátszási ablakot a testvér torrentek darabjaira is ráteszi."""
         for sibling in list(self.siblings):
-            sibling_targets: dict[int, int] = {}
-
-            if not sibling.has_active_streams:
-                for piece_index, deadline in target_deadlines.items():
-                    for sibling_piece in candidate_pieces(
-                        self.info, sibling.info, piece_index
-                    ):
-                        if sibling.torrent_handle.have_piece(sibling_piece):
-                            continue
-                        if deadline < sibling_targets.get(sibling_piece, deadline + 1):
-                            sibling_targets[sibling_piece] = deadline
-
+            sibling_targets = self._sibling_deadlines(sibling, target_deadlines)
             mirrored = self._mirrored_deadlines.setdefault(sibling.info_hash, {})
 
-            if sibling_targets and self.info_hash not in sibling._mirror_sources:
-                sibling._mirror_sources.add(self.info_hash)
-                sibling._apply_heat()
+            if sibling_targets:
+                sibling.add_mirror_source(self.info_hash)
 
             for sibling_piece in list(mirrored):
                 if sibling_piece not in sibling_targets:
@@ -161,9 +149,41 @@ class Torrent:
                 sibling.torrent_handle.set_piece_deadline(sibling_piece, deadline)
                 mirrored[sibling_piece] = deadline
 
-            if not sibling_targets and self.info_hash in sibling._mirror_sources:
-                sibling._mirror_sources.discard(self.info_hash)
-                self.service.trigger_priority_update(sibling.info_hash)
+            if not sibling_targets:
+                sibling.remove_mirror_source(self.info_hash)
+
+    def _sibling_deadlines(
+        self, sibling: Torrent, target_deadlines: dict[int, int]
+    ) -> dict[int, int]:
+        """A testvér hiányzó darabjai, a rájuk eső legkorábbi deadline-nal."""
+        if sibling.has_active_streams:
+            return {}
+
+        sibling_targets: dict[int, int] = {}
+        for piece_index, deadline in target_deadlines.items():
+            for sibling_piece in candidate_pieces(self.info, sibling.info, piece_index):
+                if sibling.torrent_handle.have_piece(sibling_piece):
+                    continue
+                sibling_targets[sibling_piece] = min(
+                    deadline, sibling_targets.get(sibling_piece, deadline)
+                )
+
+        return sibling_targets
+
+    def add_mirror_source(self, info_hash: str) -> None:
+        """Egy testvér lejátszása miatt ez a torrent is aktívan tölt."""
+        if info_hash in self._mirror_sources:
+            return
+
+        self._mirror_sources.add(info_hash)
+        self._apply_heat()
+
+    def remove_mirror_source(self, info_hash: str) -> None:
+        if info_hash not in self._mirror_sources:
+            return
+
+        self._mirror_sources.discard(info_hash)
+        self.service.trigger_priority_update(self.info_hash)
 
     def link(self, other: Torrent) -> None:
         if other not in self.siblings:
@@ -176,9 +196,7 @@ class Torrent:
             if self in sibling.siblings:
                 sibling.siblings.remove(self)
             sibling._mirrored_deadlines.pop(self.info_hash, None)
-            if self.info_hash in sibling._mirror_sources:
-                sibling._mirror_sources.discard(self.info_hash)
-                self.service.trigger_priority_update(sibling.info_hash)
+            sibling.remove_mirror_source(self.info_hash)
         self.siblings = []
 
     def update_default_priority(

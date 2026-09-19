@@ -111,9 +111,10 @@ class StreamService:
                 file_index=source.file_index,
             )
 
-            if created or await asyncio.to_thread(self._is_dual_swarm):
-                await self._merge_same_hash_sources(
-                    torrent_with_relay.info_hash, sources[index + 1 :]
+            dual_swarm = await asyncio.to_thread(self._is_dual_swarm)
+            if created or dual_swarm:
+                await self._attach_alternate_sources(
+                    torrent_with_relay.info_hash, sources[index + 1 :], dual_swarm
                 )
             break
 
@@ -196,19 +197,17 @@ class StreamService:
             return config.dual_swarm
         return system_settings.dual_swarm
 
-    async def _merge_same_hash_sources(
-        self, info_hash: str, sources: list[StreamAlternate]
+    async def _attach_alternate_sources(
+        self, info_hash: str, sources: list[StreamAlternate], dual_swarm: bool
     ) -> None:
         """Azonos info_hash-ű alternatívák trackereit a futó torrenthez adja.
 
-        DUAL_SWARM mellett az azonos tartalmú, de más info_hash-ű alternatíva
+        Dupla swarm mellett az azonos tartalmú, de más info_hash-ű alternatíva
         külön torrentként indul, a relay köti össze őket.
 
         Csak a már cache-elt torrent fájlokat nézi, indexert nem hív, és a
         lejátszást sosem töri meg.
         """
-        dual_swarm_enabled = await asyncio.to_thread(self._is_dual_swarm)
-
         for source in sources:
             try:
                 torrent_file = await asyncio.to_thread(
@@ -220,10 +219,10 @@ class StreamService:
                     continue
 
                 same_hash = torrent_file.info.info_hash == info_hash
-                dual_swarm = dual_swarm_enabled and self._relay_service.is_linkable(
+                linkable = dual_swarm and self._relay_service.is_linkable(
                     info_hash, torrent_file.info
                 )
-                if not same_hash and not dual_swarm:
+                if not same_hash and not linkable:
                     continue
 
                 await self._ensure_torrent(source)
