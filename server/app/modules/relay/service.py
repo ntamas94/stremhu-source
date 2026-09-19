@@ -268,42 +268,45 @@ class RelayService:
         """
         for target in list(source.siblings):
             try:
-                if not target.torrent_handle.is_valid():
-                    continue
-
-                state = target.torrent_handle.status().state
-                if state in (
-                    libtorrent.torrent_status.checking_files,
-                    libtorrent.torrent_status.checking_resume_data,
-                ):
-                    continue
-
-                for target_piece in candidate_pieces(
-                    source.info, target.info, piece_index
-                ):
-                    if (
-                        target_piece in target.bridged_pieces
-                        or target.torrent_handle.have_piece(target_piece)
-                    ):
-                        continue
-
-                    segments = bridgeable_segments(
-                        source.info,
-                        target.info,
-                        target_piece,
-                        source.torrent_handle.have_piece,
-                    )
-                    if segments is None:
-                        continue
-
-                    data = self._read_segments(segments)
-                    if data is None:
-                        continue
-
-                    target.bridged_pieces.add(target_piece)
-                    target.torrent_handle.add_piece(target_piece, data, 0)
+                if self._accepts_pieces(target):
+                    self._bridge_piece_to(source, target, piece_index)
             except Exception:
                 logger.exception("Hiba történt a dupla swarm darab átadása közben.")
+
+    @staticmethod
+    def _accepts_pieces(torrent: Torrent) -> bool:
+        """Ellenőrzés alatt álló torrentnek nem adunk darabot."""
+        handle = torrent.torrent_handle
+        return handle.is_valid() and handle.status().state not in (
+            libtorrent.torrent_status.checking_files,
+            libtorrent.torrent_status.checking_resume_data,
+        )
+
+    def _bridge_piece_to(
+        self, source: Torrent, target: Torrent, piece_index: int
+    ) -> None:
+        for target_piece in candidate_pieces(source.info, target.info, piece_index):
+            if (
+                target_piece in target.bridged_pieces
+                or target.torrent_handle.have_piece(target_piece)
+            ):
+                continue
+
+            segments = bridgeable_segments(
+                source.info,
+                target.info,
+                target_piece,
+                source.torrent_handle.have_piece,
+            )
+            if segments is None:
+                continue
+
+            data = self._read_segments(segments)
+            if data is None:
+                continue
+
+            target.bridged_pieces.add(target_piece)
+            target.torrent_handle.add_piece(target_piece, data, 0)
 
     def _read_segments(self, segments: list[Segment]) -> bytes | None:
         chunks: list[bytes] = []
