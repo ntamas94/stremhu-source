@@ -7,6 +7,7 @@ from app.common.database import isolated_db_session
 from app.common.keyed_lock import KeyedLock
 from app.common.logger import logger
 from app.common.schemas.internal import ImdbInfo
+from app.config import config
 from app.modules.indexers.service import IndexersService
 from app.modules.playback_histories.dependencies import (
     create_playback_histories_service,
@@ -17,6 +18,7 @@ from app.modules.playback_histories.schemas.internal import (
 )
 from app.modules.relay.entities import File
 from app.modules.relay.service import RelayService
+from app.modules.settings.service import SettingsService
 from app.modules.stream.schemas import (
     ParsedRangeHeader,
     StreamAlternate,
@@ -29,7 +31,7 @@ from app.modules.torrent_files.service import TorrentFilesService
 from app.modules.torrents.dependencies import (
     create_torrents_service,
 )
-from app.modules.torrents.schemas.internal import TorrentWithRelay
+from app.modules.torrents.schemas.internal import TorrentUpdate, TorrentWithRelay
 from app.modules.torrents.service import TorrentsService
 
 torrent_locks = KeyedLock()
@@ -47,12 +49,14 @@ class StreamService:
         torrent_files_service: TorrentFilesService,
         indexers_service: IndexersService,
         relay_service: RelayService,
+        settings_service: SettingsService,
         isolated_torrent_files_service: IsolatedTorrentFilesService,
     ):
         self._torrents_service = torrents_service
         self._torrent_files_service = torrent_files_service
         self._indexers_service = indexers_service
         self._relay_service = relay_service
+        self._settings_service = settings_service
         self._isolated_torrent_files_service = isolated_torrent_files_service
 
     async def prepare_for_stream(
@@ -86,8 +90,14 @@ class StreamService:
             ):
                 continue
 
+            others = [
+                {"indexer_id": other.indexer_id, "torrent_id": other.torrent_id}
+                for other in sources
+                if other is not source
+            ]
+
             try:
-                torrent_with_relay, created = await self._ensure_torrent(source)
+                torrent_with_relay, created = await self._ensure_torrent(source, others)
             except Exception as error:
                 failed_sources[source_key] = time.monotonic()
                 logger.warning(
@@ -101,9 +111,10 @@ class StreamService:
                 file_index=source.file_index,
             )
 
-            if created:
-                await self._merge_same_hash_sources(
-                    torrent_with_relay.info_hash, sources[index + 1 :]
+            dual_swarm = await asyncio.to_thread(self._is_dual_swarm)
+            if created or dual_swarm:
+                await self._attach_alternate_sources(
+                    torrent_with_relay.info_hash, sources[index + 1 :], dual_swarm
                 )
             break
 
@@ -119,7 +130,9 @@ class StreamService:
         return parsed_range_header, file
 
     async def _ensure_torrent(
-        self, source: StreamAlternate
+        self,
+        source: StreamAlternate,
+        alternates: list[dict[str, str]] | None = None,
     ) -> tuple[TorrentWithRelay, bool]:
         indexer_id = source.indexer_id
         torrent_id = source.torrent_id
@@ -136,6 +149,13 @@ class StreamService:
             )
 
             if torrent_with_relay is not None:
+                # Régebben indított torrentnél pótoljuk a tartalék forrásokat.
+                if alternates and torrent_with_relay.torrent.alternates is None:
+                    await asyncio.to_thread(
+                        self._save_alternates,
+                        torrent_with_relay.info_hash,
+                        alternates,
+                    )
                 return torrent_with_relay, False
 
             torrent_file = await asyncio.to_thread(
@@ -167,13 +187,23 @@ class StreamService:
                 self._create_torrent,
                 torrent_file=torrent_file,
                 file_index=source.file_index,
+                alternates=alternates,
             )
             return torrent_with_relay, True
 
-    async def _merge_same_hash_sources(
-        self, info_hash: str, sources: list[StreamAlternate]
+    def _is_dual_swarm(self) -> bool:
+        system_settings = self._settings_service.find_system()
+        if system_settings is None:
+            return config.dual_swarm
+        return system_settings.dual_swarm
+
+    async def _attach_alternate_sources(
+        self, info_hash: str, sources: list[StreamAlternate], dual_swarm: bool
     ) -> None:
         """Azonos info_hash-ű alternatívák trackereit a futó torrenthez adja.
+
+        Dupla swarm mellett az azonos tartalmú, de más info_hash-ű alternatíva
+        külön torrentként indul, a relay köti össze őket.
 
         Csak a már cache-elt torrent fájlokat nézi, indexert nem hív, és a
         lejátszást sosem töri meg.
@@ -185,7 +215,14 @@ class StreamService:
                     indexer_id=source.indexer_id,
                     torrent_id=source.torrent_id,
                 )
-                if torrent_file is None or torrent_file.info.info_hash != info_hash:
+                if torrent_file is None:
+                    continue
+
+                same_hash = torrent_file.info.info_hash == info_hash
+                linkable = dual_swarm and self._relay_service.is_linkable(
+                    info_hash, torrent_file.info
+                )
+                if not same_hash and not linkable:
                     continue
 
                 await self._ensure_torrent(source)
@@ -230,12 +267,21 @@ class StreamService:
         self,
         torrent_file: TorrentFileModel,
         file_index: int,
+        alternates: list[dict[str, str]] | None = None,
     ) -> TorrentWithRelay:
         self._validate_file(torrent_file, file_index)
 
         with isolated_db_session() as local_db:
             return create_torrents_service(local_db).create_from_torrent_file(
-                torrent_file
+                torrent_file, alternates
+            )
+
+    def _save_alternates(
+        self, info_hash: str, alternates: list[dict[str, str]]
+    ) -> None:
+        with isolated_db_session() as local_db:
+            create_torrents_service(local_db).update(
+                info_hash, TorrentUpdate(alternates=alternates)
             )
 
     def _validate_file(

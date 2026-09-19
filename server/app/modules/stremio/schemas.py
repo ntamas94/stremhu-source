@@ -180,9 +180,11 @@ class StremioStream(BaseModel):
     ) -> StremioStream:
         file_size = f"💾 {humanize.naturalsize(torrent_stream.file_size, binary=True, format='%.2f')}"
         seeders = f"👥 {torrent_stream.seeders}"
-        indexer = f"🧲 {torrent_stream.indexer_account.indexer_definition.name}"
-
-        description_first_line = " | ".join(compact([indexer, seeders, file_size]))
+        indexer_names = [
+            torrent_stream.indexer_account.indexer_definition.name,
+            *torrent_stream.merged_indexer_names,
+        ]
+        indexer = f"🧲 {' + '.join(indexer_names)}"
 
         media_attributes = [
             attribute
@@ -213,10 +215,16 @@ class StremioStream(BaseModel):
         readable_video_codecs = format_group(PreferenceKey.VIDEO_CODEC)
         readable_audio_channels = format_group(PreferenceKey.AUDIO_CHANNELS)
 
+        # Az indexer külön sort kap, különben a kliens tetszőleges helyen töri
+        # meg a hosszú sort; egy indexernél is így, hogy a lista egységes legyen.
+        # A nyelv a seeder és a méret elé kerül.
+        description_first_line = "\n".join(
+            [indexer, " | ".join(compact([readable_language, seeders, file_size]))]
+        )
+
         description_second_line = " | ".join(
             compact(
                 [
-                    readable_language,
                     readable_audio_qualities,
                     readable_audio_spatials,
                     readable_audio_channels,
@@ -244,8 +252,16 @@ class StremioStream(BaseModel):
                 [readable_is_persisted, readable_resolutions, readable_video_qualities]
             )
         )
+        # A nyelv átkerült az első blokkba, így a hangsor gyakrabban üres:
+        # üres sort nem írunk ki.
         description = "\n".join(
-            [description_first_line, description_second_line, description_third_line]
+            compact(
+                [
+                    description_first_line,
+                    description_second_line,
+                    description_third_line,
+                ]
+            )
         )
         binge_group = f"{torrent_stream.indexer_account.indexer_definition.id}-{torrent_stream.torrent_id}"
 

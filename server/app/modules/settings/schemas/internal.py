@@ -46,12 +46,16 @@ class SystemSettings(BaseModel):
     hit_and_run: bool = True
     keep_seed_seconds: int = 0
     cache_retention_seconds: int = 14 * 24 * 60 * 60  # 14 nap másodpercekben
+    # Kísérleti: azonos release más info_hash-ű példányai együtt töltenek.
+    # Amíg nincs elmentve, a DUAL_SWARM környezeti változó az alapérték.
+    dual_swarm: bool = Field(default_factory=lambda: config.dual_swarm)
 
 
 class SystemSettingsUpdate(BaseModel):
     hit_and_run: bool | None = None
     keep_seed_seconds: int | None = None
     cache_retention_seconds: int | None = None
+    dual_swarm: bool | None = None
 
 
 class RelaySettings(BaseModel):
