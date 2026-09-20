@@ -40,23 +40,23 @@ export function MultiTorrent() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Label htmlFor="multiTorrent" className="flex items-start gap-3">
-          <div className="grid gap-1">
+        <div className="grid gap-1">
+          <Label htmlFor="multiTorrent" className="flex items-start gap-3">
             <p className="flex-1 text-sm leading-none font-medium">
               Azonos release együtt töltése
             </p>
-            <p className="text-muted-foreground text-sm">
-              Minden érintett trackeren külön torrent fut, így több hálózati
-              kapcsolatot és memóriát használ.
-            </p>
-          </div>
-          <Switch
-            id="multiTorrent"
-            checked={systemSetting.multiTorrent}
-            disabled={isPending}
-            onCheckedChange={handleChange}
-          />
-        </Label>
+            <Switch
+              id="multiTorrent"
+              checked={systemSetting.multiTorrent}
+              disabled={isPending}
+              onCheckedChange={handleChange}
+            />
+          </Label>
+          <p className="text-muted-foreground text-sm">
+            Minden érintett trackeren külön torrent fut, így több hálózati
+            kapcsolatot és memóriát használ.
+          </p>
+        </div>
       </CardContent>
     </Card>
   )
