@@ -33,17 +33,18 @@ export function MultiTorrent() {
       <CardHeader>
         <CardTitle>Multi torrent (kísérleti)</CardTitle>
         <CardDescription>
-          Ha ugyanaz a release több trackeren más info hash-sel van fent, a
-          példányok külön torrentként indulnak, és a kész darabokat megosztják
-          egymással. A találati listában ilyenkor egy sorba kerülnek, összeadott
-          seederszámmal. Kikapcsolva minden tracker külön sor.
+          Ha ugyanaz a release több trackeren is fent van, a találati listában
+          egy sorba kerülnek, összeadott seederszámmal, a többi tracker pedig
+          tartalék forrás lesz. Ha az info hash eltér, a példányok külön
+          torrentként indulnak, és a kész darabokat megosztják egymással.
+          Kikapcsolva minden tracker külön sor.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-1">
           <Label htmlFor="multiTorrent" className="flex items-start gap-3">
             <p className="flex-1 text-sm leading-none font-medium">
-              Azonos release együtt töltése
+              Multi torrent
             </p>
             <Switch
               id="multiTorrent"
