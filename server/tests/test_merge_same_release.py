@@ -54,13 +54,13 @@ def test_merge_same_release():
     merged = service._merge_same_release(
         [
             create_stream("ncore", "1", "Movie.2024.1080p", 10),
-            create_stream("bithumen", "2", "movie.2024.1080p", None),
+            create_stream("bithumen", "2", "movie.2024.1080p", 7),
             create_stream("ncore", "3", "Other.2024.1080p", 5),
         ]
     )
 
     assert [stream.torrent_id for stream in merged] == ["1", "3"]
-    assert merged[0].seeders == 10
+    assert merged[0].seeders == 17
     assert merged[0].merged_indexer_names == ["BitHUmen"]
     assert merged[1].merged_indexer_names == []
 
@@ -103,3 +103,51 @@ def test_merged_label_breaks_line_after_indexers():
     )
     assert single_lines[0] == "🧲 nCore"
     assert single_lines[1].startswith("👥 3 | 💾 ")
+
+
+def _find_by_imdb(dual_swarm: bool):
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    streams = [
+        create_stream("ncore", "1", "Movie.2024.1080p", 10),
+        create_stream("bithumen", "2", "Movie.2024.1080p", 7),
+    ]
+    provider = Mock()
+    provider.find_by_imdb_id = AsyncMock(return_value=([Mock(), Mock()], []))
+    settings_service = Mock()
+    settings_service.get_app_url.return_value = "http://app"
+    settings_service.is_dual_swarm.return_value = dual_swarm
+
+    service = TorrentStreamsService(
+        db=Mock(),
+        torrent_source_provider_service=provider,
+        torrents_service=Mock(),
+        settings_service=settings_service,
+        preferences_service=Mock(),
+    )
+    service._filter_torrent_streams = lambda torrent_streams, user: torrent_streams
+    service._sort_torrent_streams = lambda torrent_streams, user: torrent_streams
+
+    with patch.object(TorrentStream, "from_imdb_id", side_effect=streams):
+        result, _ = asyncio.run(
+            service.find_by_imdb(Mock(enable_smart_filter=False), "tt1")
+        )
+    return result
+
+
+def test_dual_swarm_off_lists_each_indexer_separately():
+    result = _find_by_imdb(dual_swarm=False)
+
+    assert [(s.torrent_id, s.seeders) for s in result] == [("1", 10), ("2", 7)]
+    assert all(s.merged_indexer_names == [] for s in result)
+    for stream in result:
+        token = parse_stream_token(stream.play_url.rsplit("/", 1)[1])
+        assert token.alternates == []
+
+
+def test_dual_swarm_on_merges_and_sums_seeders():
+    result = _find_by_imdb(dual_swarm=True)
+
+    assert [(s.torrent_id, s.seeders) for s in result] == [("1", 17)]
+    assert result[0].merged_indexer_names == ["BitHUmen"]

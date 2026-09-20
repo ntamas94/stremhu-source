@@ -35,7 +35,8 @@ export function DualSwarm() {
         <CardDescription>
           Ha ugyanaz a release több trackeren más info hash-sel van fent, a
           példányok külön torrentként indulnak, és a kész darabokat megosztják
-          egymással.
+          egymással. A találati listában ilyenkor egy sorba kerülnek,
+          összeadott seederszámmal. Kikapcsolva minden tracker külön sor.
         </CardDescription>
       </CardHeader>
       <CardContent>
