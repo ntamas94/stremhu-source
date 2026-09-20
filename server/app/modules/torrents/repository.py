@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.playback_histories.models import PlaybackHistoryModel
@@ -82,4 +82,60 @@ class TorrentRepository:
             last_played = func.coalesce(last_played_subquery, TorrentModel.created_at)
             query = query.filter(last_played < cutoff)
 
+            return [
+                torrent
+                for torrent in query.all()
+                if not self._sibling_played_since(torrent, cutoff)
+            ]
+
         return query.all()
+
+    def _sibling_keys(self, torrent: TorrentModel) -> set[tuple[str, str]]:
+        """Azonos release más indexerről, mindkét irányból nézve."""
+        own_key = (torrent.indexer_id, torrent.torrent_id)
+        keys = {
+            (alternate["indexer_id"], alternate["torrent_id"])
+            for alternate in torrent.alternates or []
+        }
+
+        linked = self.db.query(TorrentModel).filter(
+            TorrentModel.alternates.is_not(None)
+        )
+        for other in linked:
+            other_keys = {
+                (alternate["indexer_id"], alternate["torrent_id"])
+                for alternate in other.alternates or []
+            }
+            if own_key in other_keys:
+                keys.add((other.indexer_id, other.torrent_id))
+                keys.update(other_keys)
+
+        keys.discard(own_key)
+        return keys
+
+    def _sibling_played_since(
+        self, torrent: TorrentModel, cutoff: datetime.datetime
+    ) -> bool:
+        """A lejátszási előzmény csak az elsődleges forráshoz készül, ezért a
+        testvérek lejárata együtt tolódik vele."""
+        keys = self._sibling_keys(torrent)
+        if not keys:
+            return False
+
+        played = (
+            self.db.query(PlaybackHistoryModel.playback_id)
+            .filter(
+                PlaybackHistoryModel.created_at >= cutoff,
+                or_(
+                    *(
+                        and_(
+                            PlaybackHistoryModel.indexer_id == indexer_id,
+                            PlaybackHistoryModel.torrent_id == torrent_id,
+                        )
+                        for indexer_id, torrent_id in keys
+                    )
+                ),
+            )
+            .first()
+        )
+        return played is not None

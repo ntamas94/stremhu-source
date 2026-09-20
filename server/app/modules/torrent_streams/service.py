@@ -69,7 +69,10 @@ class TorrentStreamsService:
         sorted_torrent_streams = self._sort_torrent_streams(
             filtered_torrent_streams, user
         )
-        sorted_torrent_streams = self._merge_same_release(sorted_torrent_streams)
+        # Csak multi torrent mellett vonunk össze: ott tényleg minden forrásból töltünk,
+        # így az összeadott seederszám valós. Kikapcsolva minden indexer külön sor.
+        if await asyncio.to_thread(self._settings_service.is_multi_torrent):
+            sorted_torrent_streams = self._merge_same_release(sorted_torrent_streams)
 
         if user.enable_smart_filter:
             limit = user.smart_filter_limit
@@ -124,6 +127,13 @@ class TorrentStreamsService:
                 continue
 
             primary.seeders = (primary.seeders or 0) + (torrent_stream.seeders or 0)
+            indexer_name = torrent_stream.indexer_account.indexer_definition.name
+            primary_name = primary.indexer_account.indexer_definition.name
+            if (
+                indexer_name != primary_name
+                and indexer_name not in primary.merged_indexer_names
+            ):
+                primary.merged_indexer_names.append(indexer_name)
             if len(alternates.setdefault(key, [])) < max_alternates:
                 alternates[key].append(
                     StreamAlternate(

@@ -21,6 +21,7 @@ from app.common.constants import (
 )
 from app.common.logger import logger
 from app.common.torrent_info import TorrentFileInfo, TorrentInfo
+from app.modules.relay.multi_torrent import candidate_pieces
 
 
 class Torrent:
@@ -34,6 +35,7 @@ class Torrent:
         self.torrent_handle = torrent_handle
         self.service = service
 
+        self.info = torrent_info
         self.info_hash = torrent_info.info_hash
         self.name = torrent_info.name
         self.total_size = torrent_info.size
@@ -58,6 +60,12 @@ class Torrent:
 
         self._active_deadlines: dict[int, int] = {}
 
+        # Kísérleti multi torrent: azonos tartalmú, más info_hash-ű torrentek.
+        self.siblings: list[Torrent] = []
+        self.bridged_pieces: set[int] = set()
+        self._mirror_sources: set[str] = set()
+        self._mirrored_deadlines: dict[str, dict[int, int]] = {}
+
         self.files: dict[int, File] = {}
 
         for file_info in torrent_info.files:
@@ -70,6 +78,11 @@ class Torrent:
     def has_active_streams(self) -> bool:
         return any(file.has_active_streams for file in self.files.values())
 
+    @property
+    def is_hot(self) -> bool:
+        """Saját stream vagy egy testvér streamje miatt aktívan tölt."""
+        return self.has_active_streams or bool(self._mirror_sources)
+
     def _update_prioritize_pieces(self, priority: int) -> None:
         priorities = self.torrent_handle.piece_priorities()
         self.torrent_handle.prioritize_pieces([priority] * len(priorities))
@@ -77,18 +90,7 @@ class Torrent:
 
     def priority_manager(self):
         try:
-            if self.has_active_streams and self._current_piece_priority != PRIO_0:
-                self._update_prioritize_pieces(PRIO_0)
-
-            target_max_connections = (
-                50
-                if self.has_active_streams
-                else self.service._torrent_connections_limit
-            )
-
-            if target_max_connections != self._max_connections:
-                self.torrent_handle.set_max_connections(target_max_connections)
-                self._max_connections = target_max_connections
+            self._apply_heat()
 
             target_deadlines = self.get_deadlines()
 
@@ -105,14 +107,97 @@ class Torrent:
                 )
                 self._active_deadlines[piece_index] = deadline
 
+            self._mirror_deadlines(target_deadlines)
+
             if (
-                not self.has_active_streams
+                not self.is_hot
                 and self._current_piece_priority != self._default_piece_priority
             ):
                 self._update_prioritize_pieces(self._default_piece_priority)
 
         except Exception:
             logger.exception("Hiba történt a prioritáskezelőben.")
+
+    def _apply_heat(self) -> None:
+        # A PRIO_0 törli a deadline-okat, ezért mindig a deadline-ok előtt fut.
+        if self.is_hot and self._current_piece_priority != PRIO_0:
+            self._update_prioritize_pieces(PRIO_0)
+
+        target_max_connections = (
+            50 if self.is_hot else self.service._torrent_connections_limit
+        )
+
+        if target_max_connections != self._max_connections:
+            self.torrent_handle.set_max_connections(target_max_connections)
+            self._max_connections = target_max_connections
+
+    def _mirror_deadlines(self, target_deadlines: dict[int, int]) -> None:
+        """A lejátszási ablakot a testvér torrentek darabjaira is ráteszi."""
+        for sibling in list(self.siblings):
+            sibling_targets = self._sibling_deadlines(sibling, target_deadlines)
+            mirrored = self._mirrored_deadlines.setdefault(sibling.info_hash, {})
+
+            if sibling_targets:
+                sibling.add_mirror_source(self.info_hash)
+
+            for sibling_piece in list(mirrored):
+                if sibling_piece not in sibling_targets:
+                    sibling.torrent_handle.reset_piece_deadline(sibling_piece)
+                    mirrored.pop(sibling_piece)
+
+            for sibling_piece, deadline in sibling_targets.items():
+                sibling.torrent_handle.set_piece_deadline(sibling_piece, deadline)
+                mirrored[sibling_piece] = deadline
+
+            if not sibling_targets:
+                sibling.remove_mirror_source(self.info_hash)
+
+    def _sibling_deadlines(
+        self, sibling: Torrent, target_deadlines: dict[int, int]
+    ) -> dict[int, int]:
+        """A testvér hiányzó darabjai, a rájuk eső legkorábbi deadline-nal."""
+        if sibling.has_active_streams:
+            return {}
+
+        sibling_targets: dict[int, int] = {}
+        for piece_index, deadline in target_deadlines.items():
+            for sibling_piece in candidate_pieces(self.info, sibling.info, piece_index):
+                if sibling.torrent_handle.have_piece(sibling_piece):
+                    continue
+                sibling_targets[sibling_piece] = min(
+                    deadline, sibling_targets.get(sibling_piece, deadline)
+                )
+
+        return sibling_targets
+
+    def add_mirror_source(self, info_hash: str) -> None:
+        """Egy testvér lejátszása miatt ez a torrent is aktívan tölt."""
+        if info_hash in self._mirror_sources:
+            return
+
+        self._mirror_sources.add(info_hash)
+        self._apply_heat()
+
+    def remove_mirror_source(self, info_hash: str) -> None:
+        if info_hash not in self._mirror_sources:
+            return
+
+        self._mirror_sources.discard(info_hash)
+        self.service.trigger_priority_update(self.info_hash)
+
+    def link(self, other: Torrent) -> None:
+        if other not in self.siblings:
+            self.siblings.append(other)
+        if self not in other.siblings:
+            other.siblings.append(self)
+
+    def unlink(self) -> None:
+        for sibling in self.siblings:
+            if self in sibling.siblings:
+                sibling.siblings.remove(self)
+            sibling._mirrored_deadlines.pop(self.info_hash, None)
+            sibling.remove_mirror_source(self.info_hash)
+        self.siblings = []
 
     def update_default_priority(
         self,

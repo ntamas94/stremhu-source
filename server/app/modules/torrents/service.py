@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from app.common.constants import PRIO_0, PRIO_1
 from app.common.logger import logger
 from app.modules.indexer_accounts.service import IndexerAccountsService
+from app.modules.indexer_definitions.models import IndexerDefinitionModel
 from app.modules.indexer_definitions.service import IndexerDefinitionsService
 from app.modules.relay.service import RelayService
 from app.modules.torrent_files.models import TorrentFileModel
@@ -31,11 +32,13 @@ class TorrentsService:
     def create_from_torrent_file(
         self,
         torrent_file: TorrentFileModel,
+        alternates: list[dict[str, str]] | None = None,
     ) -> TorrentWithRelay:
         torrent_model = TorrentModel(
             indexer_id=torrent_file.indexer_id,
             torrent_id=torrent_file.torrent_id,
             info_hash=torrent_file.info.info_hash,
+            alternates=alternates or None,
         )
 
         torrent = self._torrent_repository.create(torrent_model)
@@ -48,6 +51,12 @@ class TorrentsService:
         )
 
         return TorrentWithRelay(torrent=torrent, relay=relay_torrent)
+
+    def get_indexer_definition_map(self) -> dict[str, IndexerDefinitionModel]:
+        return {
+            account.indexer_id: account.indexer_definition
+            for account in self._indexer_accounts_service.find_list()
+        }
 
     def get_torrents(self) -> list[TorrentWithRelay]:
         torrents = self._torrent_repository.find()

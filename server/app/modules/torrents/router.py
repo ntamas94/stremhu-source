@@ -26,8 +26,9 @@ def get_list(
     _: Annotated[UserModel, Depends(SessionGuard([UserRoleKey.ADMIN]))],
 ):
     torrent_pairs = torrents_service.get_torrents()
+    indexer_definitions = torrents_service.get_indexer_definition_map()
     return [
-        TorrentResponse.from_torrent_with_relay(torrent_pair)
+        TorrentResponse.from_torrent_with_relay(torrent_pair, indexer_definitions)
         for torrent_pair in torrent_pairs
     ]
 
@@ -42,7 +43,9 @@ def get_one(
     _: Annotated[UserModel, Depends(SessionGuard([UserRoleKey.ADMIN]))],
 ):
     torrent_pair = torrents_service.get_by_info_hash(info_hash)
-    return TorrentResponse.from_torrent_with_relay(torrent_pair)
+    return TorrentResponse.from_torrent_with_relay(
+        torrent_pair, torrents_service.get_indexer_definition_map()
+    )
 
 
 @router.put(
@@ -61,7 +64,9 @@ def update(
             payload.model_dump(exclude_unset=True),
         ),
     )
-    return TorrentResponse.from_torrent_with_relay(torrent_pair)
+    return TorrentResponse.from_torrent_with_relay(
+        torrent_pair, torrents_service.get_indexer_definition_map()
+    )
 
 
 @router.delete(

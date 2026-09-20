@@ -485,12 +485,14 @@ export interface SystemSettingsResponse {
   hitAndRun: boolean
   keepSeedSeconds: number
   cacheRetentionSeconds: number
+  multiTorrent: boolean
 }
 
 export interface SystemSettingsUpdateRequest {
   hitAndRun?: boolean | null
   keepSeedSeconds?: number | null
   cacheRetentionSeconds?: number | null
+  multiTorrent?: boolean | null
 }
 
 export interface SystemStatusResponse {
@@ -502,8 +504,14 @@ export interface SystemStatusResponse {
   isReverseProxy: boolean
 }
 
+export interface TorrentAlternateResponse {
+  indexerDefinition: IndexerDefinitionResponse
+  torrentId: string
+}
+
 export interface TorrentResponse {
   infoHash: string
+  alternates?: TorrentAlternateResponse[]
   indexerDefinition: IndexerDefinitionResponse
   torrentId: string
   name: string

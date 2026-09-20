@@ -4,6 +4,7 @@ import { Separator } from '@/shared/components/ui/separator'
 
 import { Indexers } from './-features/indexers'
 import { KeepSeeding } from './-features/keep-seeding'
+import { MultiTorrent } from './-features/multi-torrent'
 import { NetworkAccessInfo } from './-features/network-access-info'
 import { Restart } from './-features/restart'
 import { TorrentFilesCache } from './-features/torrent-files-cache'
@@ -26,6 +27,9 @@ function SystemRoute() {
         </div>
         <div className="break-inside-avoid mb-4">
           <KeepSeeding />
+        </div>
+        <div className="break-inside-avoid mb-4">
+          <MultiTorrent />
         </div>
         <div className="break-inside-avoid mb-4">
           <Restart />

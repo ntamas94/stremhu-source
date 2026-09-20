@@ -55,6 +55,12 @@ class TorrentModel(Base):
         default=None,
     )
 
+    # Azonos release más indexerről: [{"indexer_id": ..., "torrent_id": ...}]
+    alternates: Mapped[list[dict[str, str]] | None] = mapped_column(
+        sa.JSON,
+        default=None,
+    )
+
     updated_at: Mapped[datetime.datetime] = mapped_column(
         sa.DateTime,
         default_factory=datetime.datetime.now,

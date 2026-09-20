@@ -46,6 +46,12 @@ class SettingsService:
             raise ValueError("A rendszerbeállítások nem léteznek.")
         return system_settings
 
+    def is_multi_torrent(self) -> bool:
+        system_settings = self.find_system()
+        if system_settings is None:
+            return config.multi_torrent
+        return system_settings.multi_torrent
+
     # Relay Settings
 
     def save_relay(self, payload: RelaySettingsUpdate) -> RelaySettings:
