@@ -60,7 +60,6 @@ class RelayService:
         )
 
         self._torrent_connections_limit = 20
-        self.stream_buffer_seconds = 20
         self._torrents: dict[libtorrent.sha1_hash, Torrent] = {}
         self.loop = asyncio.get_event_loop()
         self.priority_update_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -125,11 +124,6 @@ class RelayService:
             for torrent_handle in self._libtorrent_session.get_torrents():
                 if torrent_handle.is_valid():
                     torrent_handle.set_max_connections(self._torrent_connections_limit)
-
-        if payload.stream_buffer_seconds is not None:
-            self.stream_buffer_seconds = payload.stream_buffer_seconds
-            for torrent in list(self._torrents.values()):
-                self.trigger_priority_update(torrent.info_hash)
 
         if payload.port is not None:
             apply_settings["listen_interfaces"] = (

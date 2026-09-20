@@ -42,7 +42,6 @@ class RelaySettingsResponse(BaseModel):
     upload_limit: int
     connections_limit: int
     torrent_connections_limit: int
-    stream_buffer_seconds: int
     enable_upnp_and_natpmp: bool
 
 

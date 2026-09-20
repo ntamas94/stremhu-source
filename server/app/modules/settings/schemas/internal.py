@@ -64,7 +64,6 @@ class RelaySettings(BaseModel):
     upload_limit: int = 0
     connections_limit: int = 200
     torrent_connections_limit: int = 20
-    stream_buffer_seconds: int = 20
     enable_upnp_and_natpmp: bool = False
 
 
@@ -74,5 +73,4 @@ class RelaySettingsUpdate(BaseModel):
     upload_limit: int | None = None
     connections_limit: int | None = None
     torrent_connections_limit: int | None = None
-    stream_buffer_seconds: int | None = Field(default=None, ge=0, le=120)
     enable_upnp_and_natpmp: bool | None = None

@@ -415,7 +415,6 @@ export interface PlaybackResponse {
   createdAt: string
   progress: number
   speed: number
-  buffered: number
 }
 
 export interface PreferenceCreateRequest {
@@ -451,7 +450,6 @@ export interface RelaySettingsResponse {
   uploadLimit: number
   connectionsLimit: number
   torrentConnectionsLimit: number
-  streamBufferSeconds: number
   enableUpnpAndNatpmp: boolean
 }
 
@@ -461,7 +459,6 @@ export interface RelaySettingsUpdateRequest {
   uploadLimit?: number | null
   connectionsLimit?: number | null
   torrentConnectionsLimit?: number | null
-  streamBufferSeconds?: number | null
   enableUpnpAndNatpmp?: boolean | null
 }
 

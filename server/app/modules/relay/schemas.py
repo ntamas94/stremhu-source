@@ -14,7 +14,6 @@ class RelaySettingsUpdate(BaseModel):
     port: int | None = None
     connections_limit: int | None = None
     torrent_connections_limit: int | None = None
-    stream_buffer_seconds: int | None = None
     enable_upnp_and_natpmp: bool | None = None
 
 

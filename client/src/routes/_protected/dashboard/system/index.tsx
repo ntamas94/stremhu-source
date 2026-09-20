@@ -7,7 +7,6 @@ import { KeepSeeding } from './-features/keep-seeding'
 import { MultiTorrent } from './-features/multi-torrent'
 import { NetworkAccessInfo } from './-features/network-access-info'
 import { Restart } from './-features/restart'
-import { StreamBuffer } from './-features/stream-buffer'
 import { TorrentFilesCache } from './-features/torrent-files-cache'
 
 export const Route = createFileRoute('/_protected/dashboard/system/')({
@@ -31,9 +30,6 @@ function SystemRoute() {
         </div>
         <div className="break-inside-avoid mb-4">
           <MultiTorrent />
-        </div>
-        <div className="break-inside-avoid mb-4">
-          <StreamBuffer />
         </div>
         <div className="break-inside-avoid mb-4">
           <Restart />

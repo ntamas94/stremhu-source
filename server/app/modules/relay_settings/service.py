@@ -33,7 +33,6 @@ class RelaySettingsService:
             port=settings.port,
             connections_limit=settings.connections_limit,
             torrent_connections_limit=settings.torrent_connections_limit,
-            stream_buffer_seconds=settings.stream_buffer_seconds,
             enable_upnp_and_natpmp=settings.enable_upnp_and_natpmp,
         )
         try:
