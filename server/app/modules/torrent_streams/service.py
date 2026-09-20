@@ -69,7 +69,10 @@ class TorrentStreamsService:
         sorted_torrent_streams = self._sort_torrent_streams(
             filtered_torrent_streams, user
         )
-        sorted_torrent_streams = self._merge_same_release(sorted_torrent_streams)
+        # Csak dupla swarm mellett vonunk össze: ott tényleg minden forrásból töltünk,
+        # így az összeadott seederszám valós. Kikapcsolva minden indexer külön sor.
+        if await asyncio.to_thread(self._settings_service.is_dual_swarm):
+            sorted_torrent_streams = self._merge_same_release(sorted_torrent_streams)
 
         if user.enable_smart_filter:
             limit = user.smart_filter_limit

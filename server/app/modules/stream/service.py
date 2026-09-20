@@ -7,7 +7,6 @@ from app.common.database import isolated_db_session
 from app.common.keyed_lock import KeyedLock
 from app.common.logger import logger
 from app.common.schemas.internal import ImdbInfo
-from app.config import config
 from app.modules.indexers.service import IndexersService
 from app.modules.playback_histories.dependencies import (
     create_playback_histories_service,
@@ -111,7 +110,7 @@ class StreamService:
                 file_index=source.file_index,
             )
 
-            dual_swarm = await asyncio.to_thread(self._is_dual_swarm)
+            dual_swarm = await asyncio.to_thread(self._settings_service.is_dual_swarm)
             if created or dual_swarm:
                 await self._attach_alternate_sources(
                     torrent_with_relay.info_hash, sources[index + 1 :], dual_swarm
@@ -190,12 +189,6 @@ class StreamService:
                 alternates=alternates,
             )
             return torrent_with_relay, True
-
-    def _is_dual_swarm(self) -> bool:
-        system_settings = self._settings_service.find_system()
-        if system_settings is None:
-            return config.dual_swarm
-        return system_settings.dual_swarm
 
     async def _attach_alternate_sources(
         self, info_hash: str, sources: list[StreamAlternate], dual_swarm: bool

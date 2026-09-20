@@ -46,6 +46,12 @@ class SettingsService:
             raise ValueError("A rendszerbeállítások nem léteznek.")
         return system_settings
 
+    def is_dual_swarm(self) -> bool:
+        system_settings = self.find_system()
+        if system_settings is None:
+            return config.dual_swarm
+        return system_settings.dual_swarm
+
     # Relay Settings
 
     def save_relay(self, payload: RelaySettingsUpdate) -> RelaySettings:
