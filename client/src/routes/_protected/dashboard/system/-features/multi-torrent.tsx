@@ -34,10 +34,10 @@ export function MultiTorrent() {
         <CardTitle>Multi torrent (kísérleti)</CardTitle>
         <CardDescription>
           Ha ugyanaz a release több trackeren is fent van, a találati listában
-          egy sorba kerülnek, összeadott seederszámmal, a többi tracker pedig
-          tartalék forrás lesz. Ha az info hash eltér, a példányok külön
-          torrentként indulnak, és a kész darabokat megosztják egymással.
-          Kikapcsolva minden tracker külön sor.
+          egy sorba kerülnek, összeadott seederszámmal, és lejátszáskor az
+          összes tracker seederei egyszerre töltenek. Ha az info hash eltér, a
+          példányok külön torrentként indulnak, és a kész darabokat megosztják
+          egymással. Kikapcsolva minden tracker külön sor.
         </CardDescription>
       </CardHeader>
       <CardContent>
