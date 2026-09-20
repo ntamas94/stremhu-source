@@ -1,5 +1,5 @@
 from app.common.torrent_info import TorrentFileInfo, TorrentInfo
-from app.modules.relay.swarm_link import (
+from app.modules.relay.multi_torrent import (
     Segment,
     bridgeable_segments,
     candidate_pieces,

@@ -46,11 +46,11 @@ class SettingsService:
             raise ValueError("A rendszerbeállítások nem léteznek.")
         return system_settings
 
-    def is_dual_swarm(self) -> bool:
+    def is_multi_torrent(self) -> bool:
         system_settings = self.find_system()
         if system_settings is None:
-            return config.dual_swarm
-        return system_settings.dual_swarm
+            return config.multi_torrent
+        return system_settings.multi_torrent
 
     # Relay Settings
 

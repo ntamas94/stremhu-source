@@ -485,14 +485,14 @@ export interface SystemSettingsResponse {
   hitAndRun: boolean
   keepSeedSeconds: number
   cacheRetentionSeconds: number
-  dualSwarm: boolean
+  multiTorrent: boolean
 }
 
 export interface SystemSettingsUpdateRequest {
   hitAndRun?: boolean | null
   keepSeedSeconds?: number | null
   cacheRetentionSeconds?: number | null
-  dualSwarm?: boolean | null
+  multiTorrent?: boolean | null
 }
 
 export interface SystemStatusResponse {

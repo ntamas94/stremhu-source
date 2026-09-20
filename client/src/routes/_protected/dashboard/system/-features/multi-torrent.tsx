@@ -16,13 +16,13 @@ import {
   useSystemSettingsUpdate,
 } from '@/shared/queries/system'
 
-export function DualSwarm() {
+export function MultiTorrent() {
   const { data: systemSetting } = useSuspenseQuery(getSystemSettings)
   const { mutateAsync: updateSetting, isPending } = useSystemSettingsUpdate()
 
   const handleChange = async (checked: boolean) => {
     try {
-      await updateSetting({ dualSwarm: checked })
+      await updateSetting({ multiTorrent: checked })
     } catch (error) {
       toast.error(parseApiError(error))
     }
@@ -31,7 +31,7 @@ export function DualSwarm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Dupla swarm (kísérleti)</CardTitle>
+        <CardTitle>Multi torrent (kísérleti)</CardTitle>
         <CardDescription>
           Ha ugyanaz a release több trackeren más info hash-sel van fent, a
           példányok külön torrentként indulnak, és a kész darabokat megosztják
@@ -40,7 +40,7 @@ export function DualSwarm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Label htmlFor="dualSwarm" className="flex items-start gap-3">
+        <Label htmlFor="multiTorrent" className="flex items-start gap-3">
           <div className="grid gap-1">
             <p className="flex-1 text-sm leading-none font-medium">
               Azonos release együtt töltése
@@ -51,8 +51,8 @@ export function DualSwarm() {
             </p>
           </div>
           <Switch
-            id="dualSwarm"
-            checked={systemSetting.dualSwarm}
+            id="multiTorrent"
+            checked={systemSetting.multiTorrent}
             disabled={isPending}
             onCheckedChange={handleChange}
           />

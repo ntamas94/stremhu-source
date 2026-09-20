@@ -25,7 +25,7 @@ export function Torrents() {
     )
   }
 
-  // Azonos release több trackerről (dupla swarm): egy kártya, egymás alatt.
+  // Azonos release több trackerről (multi torrent): egy kártya, egymás alatt.
   const groups = new Map<string, typeof torrents>()
   for (const torrent of torrents) {
     groups.set(torrent.name, [...(groups.get(torrent.name) ?? []), torrent])
