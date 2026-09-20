@@ -14,7 +14,6 @@ class PlaybackResponse(PlaybackHistoryResponse):
     )
 
     progress: float
-    speed: int
 
     @classmethod
     def from_playback(
@@ -35,5 +34,4 @@ class PlaybackResponse(PlaybackHistoryResponse):
             file_name=playback.playback_history_model.file_name,
             created_at=playback.playback_history_model.created_at,
             progress=progress,
-            speed=playback.speed,
         )

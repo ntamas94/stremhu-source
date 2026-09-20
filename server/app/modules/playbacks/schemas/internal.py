@@ -11,4 +11,3 @@ if TYPE_CHECKING:
 class Playback:
     playback_history_model: PlaybackHistoryModel
     stream: "Stream"
-    speed: int

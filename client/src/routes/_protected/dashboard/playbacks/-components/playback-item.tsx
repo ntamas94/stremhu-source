@@ -1,4 +1,4 @@
-import { GaugeIcon, LinkIcon, PlayIcon, UserIcon } from 'lucide-react'
+import { LinkIcon, PlayIcon, UserIcon } from 'lucide-react'
 
 import { Badge } from '@/shared/components/ui/badge'
 import {
@@ -13,7 +13,6 @@ import type {
   PlaybackResponse,
 } from '@/shared/lib/source/source-client'
 import { formatDateTime } from '@/shared/lib/utils'
-import { formatFilesize } from '@/shared/utils/file.util'
 
 type PlaybackItemProps = {
   playback: PlaybackResponse | PlaybackHistoryResponse
@@ -60,13 +59,6 @@ export function PlaybackItem(props: PlaybackItemProps) {
             <PlayIcon />
             {formatDateTime(playback.createdAt)}
           </Badge>
-
-          {'speed' in playback ? (
-            <Badge variant="secondary" title="Stream sebessége">
-              <GaugeIcon />
-              {formatFilesize(playback.speed)}/s
-            </Badge>
-          ) : null}
         </div>
       </div>
     </div>
