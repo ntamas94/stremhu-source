@@ -254,7 +254,7 @@ export function Torrent(props: TorrentProps) {
             key={`${alternate.indexerDefinition.id}:${alternate.torrentId}`}
             asChild
             variant="outline"
-            title={`Tartalék forrás: ${alternate.indexerDefinition.name} #${alternate.torrentId}`}
+            title={`További forrás: ${alternate.indexerDefinition.name} #${alternate.torrentId}`}
           >
             <a
               href={
