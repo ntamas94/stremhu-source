@@ -1,4 +1,10 @@
-import { GaugeIcon, LinkIcon, PlayIcon, UserIcon } from 'lucide-react'
+import {
+  DatabaseIcon,
+  GaugeIcon,
+  LinkIcon,
+  PlayIcon,
+  UserIcon,
+} from 'lucide-react'
 
 import { Badge } from '@/shared/components/ui/badge'
 import {
@@ -65,6 +71,16 @@ export function PlaybackItem(props: PlaybackItemProps) {
             <Badge variant="secondary" title="Stream sebessége">
               <GaugeIcon />
               {formatFilesize(playback.speed)}/s
+            </Badge>
+          ) : null}
+
+          {'buffered' in playback ? (
+            <Badge variant="secondary" title="Előre letöltött adat">
+              <DatabaseIcon />
+              {formatFilesize(playback.buffered)}
+              {playback.speed > 0
+                ? ` (${Math.round(playback.buffered / playback.speed)} mp)`
+                : null}
             </Badge>
           ) : null}
         </div>
