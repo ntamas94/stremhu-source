@@ -23,6 +23,11 @@ from app.common.logger import logger
 from app.common.torrent_info import TorrentFileInfo, TorrentInfo
 from app.modules.relay.multi_torrent import candidate_pieces
 from app.modules.relay.speed_meter import SpeedMeter
+from app.modules.relay.stream_buffer import (
+    buffered_piece_count,
+    piece_interval_ms,
+    prefetch_piece_count,
+)
 
 
 class Torrent:
@@ -223,16 +228,27 @@ class Torrent:
 
                 pieces_to_fetch: list[tuple[int, int]] = []
 
+                # A buffer másodpercben van megadva, a kliens mért fogyasztásából
+                # lesz belőle darabszám és határidő-lépésköz.
+                stream_speed = stream.speed
+                stream_prefetch_count = prefetch_piece_count(
+                    base_count=self.prefetch_piece_count,
+                    piece_size=self.piece_size,
+                    speed=stream_speed,
+                    buffer_seconds=self.service.stream_buffer_seconds,
+                )
+                interval_ms = piece_interval_ms(self.piece_size, stream_speed)
+
                 for piece_index in range(
                     stream.current_stream_piece, file.end_piece_index + 1
                 ):
                     if not self.torrent_handle.have_piece(piece_index):
                         distance = piece_index - stream.current_stream_piece
                         pieces_to_fetch.append((piece_index, distance))
-                        if len(pieces_to_fetch) >= self.prefetch_piece_count:
+                        if len(pieces_to_fetch) >= stream_prefetch_count:
                             break
 
-                if len(pieces_to_fetch) < self.prefetch_piece_count:
+                if len(pieces_to_fetch) < stream_prefetch_count:
                     distance_to_end_of_file = (
                         file.end_piece_index - stream.current_stream_piece
                     ) + 1
@@ -245,14 +261,14 @@ class Torrent:
                                 piece_index - file.start_piece_index
                             )
                             pieces_to_fetch.append((piece_index, piece_distance))
-                            if len(pieces_to_fetch) >= self.prefetch_piece_count:
+                            if len(pieces_to_fetch) >= stream_prefetch_count:
                                 break
 
                 for piece_index, piece_distance in pieces_to_fetch:
                     if piece_index == stream.current_stream_piece:
                         deadline = 0
                     else:
-                        deadline = 2000 + (piece_distance * 1000)
+                        deadline = 2000 + (piece_distance * interval_ms)
 
                     if (
                         piece_index not in target_deadlines
@@ -365,6 +381,17 @@ class Stream:
             self.current_stream_piece * self.torrent.piece_size
         ) - self.file.offset
         return max(0, min(byte_offset, self.file.size))
+
+    @property
+    def buffered_bytes(self) -> int:
+        """A lejátszási pozíció előtt egybefüggően letöltött adat (bájt)."""
+        count = buffered_piece_count(
+            self.torrent.torrent_handle.have_piece,
+            self.current_stream_piece,
+            self.stream_end_piece_index,
+        )
+        remaining = self.file.size - self.current_stream_byte
+        return max(0, min(count * self.torrent.piece_size, remaining))
 
     async def destroy(self):
         self.is_destroying = True
