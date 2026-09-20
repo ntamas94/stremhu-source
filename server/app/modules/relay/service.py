@@ -9,15 +9,15 @@ from app.common.logger import logger
 from app.common.torrent_info import TorrentInfo, parse_torrent_info
 from app.config import config
 from app.modules.relay.entities import File, Stream, Torrent
-from app.modules.relay.schemas import (
-    RelaySettingsUpdate,
-    RelayTorrent,
-)
-from app.modules.relay.swarm_link import (
+from app.modules.relay.multi_torrent import (
     Segment,
     bridgeable_segments,
     candidate_pieces,
     is_linkable,
+)
+from app.modules.relay.schemas import (
+    RelaySettingsUpdate,
+    RelayTorrent,
 )
 
 
@@ -253,7 +253,7 @@ class RelayService:
             if other is not torrent and is_linkable(torrent.info, other.info):
                 torrent.link(other)
                 logger.info(
-                    f"Dupla swarm: {torrent.name} ({torrent.info_hash} <-> {other.info_hash})"
+                    f"Multi torrent: {torrent.name} ({torrent.info_hash} <-> {other.info_hash})"
                 )
 
     def is_linkable(self, info_hash: str, torrent_info: TorrentInfo) -> bool:
@@ -271,7 +271,7 @@ class RelayService:
                 if self._accepts_pieces(target):
                     self._bridge_piece_to(source, target, piece_index)
             except Exception:
-                logger.exception("Hiba történt a dupla swarm darab átadása közben.")
+                logger.exception("Hiba történt a multi torrent darab átadása közben.")
 
     @staticmethod
     def _accepts_pieces(torrent: Torrent) -> bool:

@@ -21,7 +21,7 @@ from app.common.constants import (
 )
 from app.common.logger import logger
 from app.common.torrent_info import TorrentFileInfo, TorrentInfo
-from app.modules.relay.swarm_link import candidate_pieces
+from app.modules.relay.multi_torrent import candidate_pieces
 
 
 class Torrent:
@@ -60,7 +60,7 @@ class Torrent:
 
         self._active_deadlines: dict[int, int] = {}
 
-        # Kísérleti dupla swarm: azonos tartalmú, más info_hash-ű torrentek.
+        # Kísérleti multi torrent: azonos tartalmú, más info_hash-ű torrentek.
         self.siblings: list[Torrent] = []
         self.bridged_pieces: set[int] = set()
         self._mirror_sources: set[str] = set()

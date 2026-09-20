@@ -110,10 +110,12 @@ class StreamService:
                 file_index=source.file_index,
             )
 
-            dual_swarm = await asyncio.to_thread(self._settings_service.is_dual_swarm)
-            if created or dual_swarm:
+            multi_torrent = await asyncio.to_thread(
+                self._settings_service.is_multi_torrent
+            )
+            if created or multi_torrent:
                 await self._attach_alternate_sources(
-                    torrent_with_relay.info_hash, sources[index + 1 :], dual_swarm
+                    torrent_with_relay.info_hash, sources[index + 1 :], multi_torrent
                 )
             break
 
@@ -191,11 +193,11 @@ class StreamService:
             return torrent_with_relay, True
 
     async def _attach_alternate_sources(
-        self, info_hash: str, sources: list[StreamAlternate], dual_swarm: bool
+        self, info_hash: str, sources: list[StreamAlternate], multi_torrent: bool
     ) -> None:
         """Azonos info_hash-ű alternatívák trackereit a futó torrenthez adja.
 
-        Dupla swarm mellett az azonos tartalmú, de más info_hash-ű alternatíva
+        Multi torrent mellett az azonos tartalmú, de más info_hash-ű alternatíva
         külön torrentként indul, a relay köti össze őket.
 
         Csak a már cache-elt torrent fájlokat nézi, indexert nem hív, és a
@@ -212,7 +214,7 @@ class StreamService:
                     continue
 
                 same_hash = torrent_file.info.info_hash == info_hash
-                linkable = dual_swarm and self._relay_service.is_linkable(
+                linkable = multi_torrent and self._relay_service.is_linkable(
                     info_hash, torrent_file.info
                 )
                 if not same_hash and not linkable:

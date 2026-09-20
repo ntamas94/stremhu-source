@@ -21,7 +21,7 @@ class SystemSettingsResponse(BaseModel):
     hit_and_run: bool
     keep_seed_seconds: int
     cache_retention_seconds: int
-    dual_swarm: bool
+    multi_torrent: bool
 
 
 class SystemSettingsUpdateRequest(SystemSettingsUpdate):

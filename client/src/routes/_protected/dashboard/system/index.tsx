@@ -2,9 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { Separator } from '@/shared/components/ui/separator'
 
-import { DualSwarm } from './-features/dual-swarm'
 import { Indexers } from './-features/indexers'
 import { KeepSeeding } from './-features/keep-seeding'
+import { MultiTorrent } from './-features/multi-torrent'
 import { NetworkAccessInfo } from './-features/network-access-info'
 import { Restart } from './-features/restart'
 import { TorrentFilesCache } from './-features/torrent-files-cache'
@@ -29,7 +29,7 @@ function SystemRoute() {
           <KeepSeeding />
         </div>
         <div className="break-inside-avoid mb-4">
-          <DualSwarm />
+          <MultiTorrent />
         </div>
         <div className="break-inside-avoid mb-4">
           <Restart />

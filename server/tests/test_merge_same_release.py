@@ -105,7 +105,7 @@ def test_merged_label_breaks_line_after_indexers():
     assert single_lines[1].startswith("👥 3 | 💾 ")
 
 
-def _find_by_imdb(dual_swarm: bool):
+def _find_by_imdb(multi_torrent: bool):
     import asyncio
     from unittest.mock import AsyncMock, patch
 
@@ -117,7 +117,7 @@ def _find_by_imdb(dual_swarm: bool):
     provider.find_by_imdb_id = AsyncMock(return_value=([Mock(), Mock()], []))
     settings_service = Mock()
     settings_service.get_app_url.return_value = "http://app"
-    settings_service.is_dual_swarm.return_value = dual_swarm
+    settings_service.is_multi_torrent.return_value = multi_torrent
 
     service = TorrentStreamsService(
         db=Mock(),
@@ -136,8 +136,8 @@ def _find_by_imdb(dual_swarm: bool):
     return result
 
 
-def test_dual_swarm_off_lists_each_indexer_separately():
-    result = _find_by_imdb(dual_swarm=False)
+def test_multi_torrent_off_lists_each_indexer_separately():
+    result = _find_by_imdb(multi_torrent=False)
 
     assert [(s.torrent_id, s.seeders) for s in result] == [("1", 10), ("2", 7)]
     assert all(s.merged_indexer_names == [] for s in result)
@@ -146,8 +146,8 @@ def test_dual_swarm_off_lists_each_indexer_separately():
         assert token.alternates == []
 
 
-def test_dual_swarm_on_merges_and_sums_seeders():
-    result = _find_by_imdb(dual_swarm=True)
+def test_multi_torrent_on_merges_and_sums_seeders():
+    result = _find_by_imdb(multi_torrent=True)
 
     assert [(s.torrent_id, s.seeders) for s in result] == [("1", 17)]
     assert result[0].merged_indexer_names == ["BitHUmen"]
